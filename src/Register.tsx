@@ -38,7 +38,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onBackToLogin }) => {
         return;
       }
       onRegister();
-    } catch (e) {
+    } catch{
       setError('通信エラーが発生しました');
     } finally {
       setLoading(false);

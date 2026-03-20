@@ -28,7 +28,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterClick }) => {
         return;
       }
       onLogin();
-    } catch (e) {
+    } catch{
       setError('通信エラーが発生しました');
     } finally {
       setLoading(false);
