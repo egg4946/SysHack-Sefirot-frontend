@@ -22,7 +22,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onBackToLogin }) => {
     }
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/api/v1/auth/signup', {
+      const res = await fetch('https://sl2f3t9c-8000.jpe1.devtunnels.ms/api/v1/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
