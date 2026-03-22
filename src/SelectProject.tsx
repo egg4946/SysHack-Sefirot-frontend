@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 
 type Project = {
@@ -23,7 +22,7 @@ const dummyProjects: Project[] = [
   { id: 'XYZ789', name: 'デザイン班', createdAt: '2026-03-21', members: 3 },
 ];
 
-const Home: React.FC = () => {
+const SelectProject: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>(dummyProjects);
   const [showModal, setShowModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -147,4 +146,4 @@ const Home: React.FC = () => {
   );
 };
 
-export default Home;
+export default SelectProject;

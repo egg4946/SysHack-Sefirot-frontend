@@ -2,14 +2,14 @@ import React, { useState } from 'react';
 import './App.css';
 import Login from './Login';
 import Register from './Register';
-import Home from './Home';
+import SelectProject from './SelectProject';
 
-type Page = 'login' | 'register' | 'home';
+type Page = 'login' | 'register' | 'selectProject';
 
 const App: React.FC = () => {
   const [page, setPage] = useState<Page>('login');
 
-  const handleLogin = () => setPage('home');
+  const handleLogin = () => setPage('selectProject');
   //const handleLogout = () => setPage('login');
   const handleRegisterClick = () => setPage('register');
   const handleRegister = () => setPage('login');
@@ -21,8 +21,8 @@ const App: React.FC = () => {
   if (page === 'register') {
     return <Register onRegister={handleRegister} onBackToLogin={handleBackToLogin} />;
   }
-  if (page === 'home') {
-    return <Home />;
+  if (page === 'selectProject') {
+    return <SelectProject />;
   }
   return null;
 };
