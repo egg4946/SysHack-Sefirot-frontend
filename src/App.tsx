@@ -10,7 +10,7 @@ const App: React.FC = () => {
   const [page, setPage] = useState<Page>('login');
 
   const handleLogin = () => setPage('home');
-  const handleLogout = () => setPage('login');
+  //const handleLogout = () => setPage('login');
   const handleRegisterClick = () => setPage('register');
   const handleRegister = () => setPage('login');
   const handleBackToLogin = () => setPage('login');
@@ -22,7 +22,7 @@ const App: React.FC = () => {
     return <Register onRegister={handleRegister} onBackToLogin={handleBackToLogin} />;
   }
   if (page === 'home') {
-    return <Home onLogout={handleLogout} />;
+    return <Home />;
   }
   return null;
 };
