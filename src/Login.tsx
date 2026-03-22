@@ -1,11 +1,8 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-interface LoginProps {
-  onLogin: () => void;
-  onRegisterClick: () => void;
-}
-
-const Login: React.FC<LoginProps> = ({ onLogin, onRegisterClick }) => {
+const Login: React.FC = () => {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -16,7 +13,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterClick }) => {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/api/v1/auth/signin', {
+      const res = await fetch('https://sl2f3t9c-8000.jpe1.devtunnels.ms/api/v1/auth/signin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -27,7 +24,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterClick }) => {
         setLoading(false);
         return;
       }
-      onLogin();
+      navigate('/select-project');
     } catch{
       setError('通信エラーが発生しました');
     } finally {
@@ -74,7 +71,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterClick }) => {
           </button>
         </form>
         <button
-          onClick={onRegisterClick}
+          onClick={() => navigate('/register')}
           className="w-full text-blue-600 hover:underline text-sm mt-4"
         >
           新規登録はこちら

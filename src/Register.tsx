@@ -1,11 +1,8 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-interface RegisterProps {
-  onRegister: () => void;
-  onBackToLogin: () => void;
-}
-
-const Register: React.FC<RegisterProps> = ({ onRegister, onBackToLogin }) => {
+const Register: React.FC = () => {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -22,7 +19,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onBackToLogin }) => {
     }
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/api/v1/auth/signup', {
+      const res = await fetch('https://sl2f3t9c-8000.jpe1.devtunnels.ms/api/v1/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -37,7 +34,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onBackToLogin }) => {
         setLoading(false);
         return;
       }
-      onRegister();
+      navigate('/login');
     } catch{
       setError('通信エラーが発生しました');
     } finally {
@@ -108,7 +105,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onBackToLogin }) => {
           </button>
         </form>
         <button
-          onClick={onBackToLogin}
+          onClick={() => navigate('/login')}
           className="w-full text-blue-600 hover:underline text-sm mt-4"
         >
           ログイン画面に戻る
