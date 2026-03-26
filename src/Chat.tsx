@@ -1,13 +1,12 @@
+// src/Chat.tsx (LINE風・閉じるボタン対応版)
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { LuX } from "react-icons/lu"; // アイコンを追加
 
 // バックエンドから返ってくるメッセージの型定義
 interface ChatMessage {
   id: string;
   community_id: string;
-  user: {
-    id: string;
-    display_name: string;
-  };
+  user: { id: string; display_name: string; };
   content: string;
   created_at: string;
 }
@@ -15,29 +14,26 @@ interface ChatMessage {
 interface ChatProps {
   communityId: string;
   currentUserId: string;
+  onClose: () => void; // ✨ 閉じるボタンが押された時のコールバック
 }
 
-export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId }) => {
+export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 一番下に自動スクロールする関数
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // ✨ 【正規ルール1】useCallbackを使って関数を「メモ化」する
-  // これにより、communityIdが変わらない限り関数が再生成されず、無限ループを防ぎます。
+  // 関数をメモ化して無限ループを防ぐ (そのまま)
   const fetchMessages = useCallback(async () => {
     try {
       const token = localStorage.getItem('access_token');
-      if (!token) return; // トークンがない場合の安全対策
+      if (!token) return;
 
       const res = await fetch(`http://localhost:8000/api/v1/chat/messages?community_id=${communityId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
@@ -46,37 +42,34 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId }) => {
     } catch (error) {
       console.error('チャットの取得に失敗しました', error);
     }
-  }, [communityId]); // 依存配列に communityId を指定
+  }, [communityId]);
 
-  // ✨ 【正規ルール2】useEffectの中で非同期処理をクリーンに呼ぶ
+  // 初回読み込み ＆ 3秒ごとに最新を取得 (そのまま)
   useEffect(() => {
-    // useEffectの直下で非同期関数を直接呼ばず、内部でラップして呼ぶのがReactの正しい作法です
     const initFetch = async () => {
       await fetchMessages();
     };
     initFetch();
 
-    // 3秒ごとのポーリング
     const intervalId = setInterval(() => {
       fetchMessages();
     }, 3000);
 
     return () => clearInterval(intervalId);
-  }, [fetchMessages]); // 👈 無視コメントなし！正規のルール通り fetchMessages だけを依存に指定！
+  }, [fetchMessages]);
 
-  // メッセージが増えたら自動スクロール
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  // 送信処理
+  // 送信処理 (そのまま)
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
 
     const token = localStorage.getItem('access_token');
     const messageToSend = inputText;
-    setInputText(''); // 送信ボタンを押したらすぐに入力欄を空にする
+    setInputText(''); // すぐに入力欄を空にする
 
     try {
       const res = await fetch(`http://localhost:8000/api/v1/chat/send`, {
@@ -92,64 +85,82 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId }) => {
       });
 
       if (res.ok) {
-        await fetchMessages(); // 送信成功したら最新のメッセージを取得し直す
+        await fetchMessages(); // 送信成功したら最新を取得し直す
       } else {
         console.error('送信エラー');
-        setInputText(messageToSend); // 失敗したらテキストを戻す
+        setInputText(messageToSend); // 失敗したら戻す
       }
     } catch (error) {
       console.error('送信に失敗しました', error);
-      setInputText(messageToSend); // 失敗したらテキストを戻す
+      setInputText(messageToSend);
     }
   };
 
-  // 時刻のフォーマット（例: 14:30）
   const formatTime = (isoString: string) => {
     const date = new Date(isoString);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
-    <div className="flex flex-col h-[500px] w-full max-w-md border rounded-lg bg-gray-50 shadow-sm">
-      {/* チャット履歴表示エリア */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    // ✨ LINE風デザイン：下地の色を薄い水色(bg-sky-50)、周りをはっきり囲う(border-gray-300)
+    <div className="flex flex-col h-full w-full border border-gray-300 rounded-none sm:rounded-2xl bg-white shadow-2xl overflow-hidden font-sans">
+      
+      {/* 1. ✨ チャットウィジェットのヘッダー（スマホ対応：ヘッダーに閉じるボタンを追加） */}
+      <div className="flex items-center justify-between p-4 bg-white border-b sticky top-0 z-10">
+        <h3 className="text-sm font-bold flex items-center gap-2 text-gray-950">
+          💬 全体チャット
+        </h3>
+        <div className="flex items-center gap-2">
+            <span className="text-[10px] bg-green-100 text-green-700 px-2.5 py-1 rounded-full font-semibold">リアルタイム監視中</span>
+            {/* ✨ スマホ対応：ヘッダーの閉じるボタン */}
+            <button 
+                onClick={onClose}
+                className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition active:scale-95"
+            >
+                <LuX className="w-5 h-5" />
+            </button>
+        </div>
+      </div>
+
+      {/* 2. ✨ チャット履歴表示エリア：下地を薄い水色にする */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-sky-50">
         {messages.map((msg) => {
           const isMine = msg.user.id === currentUserId;
           return (
             <div key={msg.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
-              <span className="text-xs text-gray-500 mb-1 px-1">
+              <span className="text-[10px] text-gray-600 mb-1 px-1 font-medium">
                 {msg.user.display_name}
               </span>
-              <div className={`flex items-end gap-2 ${isMine ? 'flex-row-reverse' : 'flex-row'}`}>
-                <div className={`px-4 py-2 rounded-2xl max-w-[80%] ${
-                  isMine ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-gray-800 border rounded-bl-none'
+              <div className={`flex items-end gap-1.5 ${isMine ? 'flex-row-reverse' : 'flex-row'}`}>
+                {/* ✨ LINE風：吹き出しの色（自分：薄緑 #DCF8C6、他人：白 white） */}
+                <div className={`px-4 py-2 rounded-xl max-w-[80%] shadow-sm ${
+                  isMine ? 'bg-[#DCF8C6] text-gray-950 rounded-br-none' : 'bg-white text-gray-950 border border-gray-100 rounded-bl-none'
                 }`}>
-                  <p className="whitespace-pre-wrap break-words text-sm">{msg.content}</p>
+                  <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{msg.content}</p>
                 </div>
-                <span className="text-[10px] text-gray-400 mb-1">
+                <span className="text-[10px] text-gray-400 mb-1 font-mono">
                   {formatTime(msg.created_at)}
                 </span>
               </div>
             </div>
           );
         })}
-        {/* スクロール用ダミー要素 */}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 入力エリア */}
+      {/* 3. 入力エリア：白でスッキリさせる */}
       <form onSubmit={handleSend} className="p-3 bg-white border-t flex gap-2 rounded-b-lg">
         <input
           type="text"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           placeholder="メッセージを入力..."
-          className="flex-1 border rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+          className="flex-1 border rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-gray-50"
         />
         <button
           type="submit"
           disabled={!inputText.trim()}
-          className="bg-blue-500 text-white rounded-full px-4 py-2 text-sm font-medium disabled:opacity-50 transition-opacity"
+          className="bg-blue-600 text-white rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-50 transition-opacity active:scale-95"
         >
           送信
         </button>
