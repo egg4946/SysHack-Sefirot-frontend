@@ -13,20 +13,35 @@ const Login: React.FC = () => {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch('https://sl2f3t9c-8000.jpe1.devtunnels.ms/api/v1/auth/signin', {
+      const apiBase = import.meta.env.VITE_API_BASE_URL;
+      const res = await fetch(`${apiBase}/auth/signin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
+
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setError(data.detail || 'ログインに失敗しました');
-        setLoading(false);
         return;
       }
+
+      // --- 修正ポイント：レスポンスからトークンを取り出して保存する ---
+      const data = await res.json(); // OpenAPIの AuthResponse 形式を期待
+      if (data.access_token) {
+        localStorage.setItem('access_token', data.access_token);
+        // 必要に応じてリフレッシュトークンも保存
+        if (data.refresh_token) {
+          localStorage.setItem('refresh_token', data.refresh_token);
+        }
+      } else {
+        throw new Error('トークンがレスポンスに含まれていません');
+      }
+      // ---------------------------------------------------------
+
       navigate('/select-project');
-    } catch{
-      setError('通信エラーが発生しました');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '通信エラーが発生しました');
     } finally {
       setLoading(false);
     }

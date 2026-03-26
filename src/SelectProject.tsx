@@ -1,142 +1,195 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-type Project = {
+// 環境変数の取得
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const DEFAULT_DISPLAY_NAME = import.meta.env.VITE_DEFAULT_DISPLAY_NAME || "Sefirot User";
+
+type Community = {
   id: string;
   name: string;
-  createdAt: string;
-  members: number;
+  invite_code: string;
+  member_count: number;
+  created_at: string;
 };
-
-// 6桁英数字ID生成
-const generateRoomId = () => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let id = '';
-  for (let i = 0; i < 6; i++) {
-    id += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return id;
-};
-
-const dummyProjects: Project[] = [
-  { id: 'ABC123', name: '開発チームA', createdAt: '2026-03-20', members: 5 },
-  { id: 'XYZ789', name: 'デザイン班', createdAt: '2026-03-21', members: 3 },
-];
 
 const SelectProject: React.FC = () => {
-  const [projects, setProjects] = useState<Project[]>(dummyProjects);
+  const [communities, setCommunities] = useState<Community[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
-  const [joinId, setJoinId] = useState('');
-  const [joinError, setJoinError] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
-  // プロジェクト作成
-  const handleCreateProject = () => {
-    if (!newProjectName.trim()) return;
-    const newId = generateRoomId();
-    setProjects([
-      ...projects,
-      {
-        id: newId,
-        name: newProjectName,
-        createdAt: new Date().toISOString().slice(0, 10),
-        members: 1,
-      },
-    ]);
-    setShowModal(false);
-    setNewProjectName('');
-    alert(`プロジェクトを作成しました！\nルームID: ${newId}`);
+  // 認証ヘッダーの取得
+  const getAuthHeader = () => {
+    const token = localStorage.getItem('access_token');
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
   };
 
-  // ルームIDで参加
-  const handleJoinProject = () => {
-    if (!joinId.match(/^[A-Z0-9]{6}$/)) {
-      setJoinError('6桁の英数字IDを入力してください');
-      return;
+  // プロジェクト（コミュニティ）一覧取得
+  const fetchMyData = async () => {
+    try {
+      setError(null);
+      // OpenAPI: GET /me
+      const response = await fetch(`${API_BASE}/me`, {
+        headers: getAuthHeader()
+      });
+      
+      if (!response.ok) {
+        if (response.status === 401) throw new Error('認証が期限切れです。再ログインしてください。');
+        throw new Error(`サーバーエラー (${response.status})`);
+      }
+      
+      const data = await response.json();
+      // MeResponse schema に基づき user_communities をセット
+      setCommunities(data.user_communities || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'データの取得に失敗しました');
     }
-    const found = projects.find((p) => p.id === joinId);
-    if (found) {
-      alert(`プロジェクト「${found.name}」に参加しました！（仮）`);
-      setJoinError('');
-    } else {
-      setJoinError('該当するプロジェクトが見つかりません');
+  };
+
+  useEffect(() => {
+    void fetchMyData();
+  }, []);
+
+  // 新規作成: POST /community/create
+  const handleCreateProject = async () => {
+    if (!newProjectName.trim()) return;
+    try {
+      const response = await fetch(`${API_BASE}/community/create`, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: JSON.stringify({ 
+          name: newProjectName,
+          display_name: DEFAULT_DISPLAY_NAME 
+        }),
+      });
+
+      if (!response.ok) throw new Error('プロジェクトの作成に失敗しました');
+
+      await fetchMyData();
+      setShowModal(false);
+      setNewProjectName('');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '作成エラー');
+    }
+  };
+
+  // 招待コードで参加: POST /community/join
+  const handleJoinProject = async () => {
+    if (!inviteCode.trim()) return;
+    try {
+      const response = await fetch(`${API_BASE}/community/join`, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: JSON.stringify({ 
+          invite_code: inviteCode,
+          display_name: DEFAULT_DISPLAY_NAME 
+        }),
+      });
+
+      if (!response.ok) throw new Error('参加に失敗しました。コードが正しいか確認してください。');
+
+      await fetchMyData();
+      setInviteCode('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '参加エラー');
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">プロジェクト選択</h1>
-        <button className="bg-gray-700 px-4 py-2 rounded hover:bg-gray-600">設定</button>
-      </div>
-
-      {/* ルームIDで参加 */}
-      <div className="mb-8 flex items-center gap-2">
-        <input
-          type="text"
-          placeholder="ルームIDで参加 (例: ABC123)"
-          className="px-3 py-2 rounded text-black"
-          value={joinId}
-          onChange={(e) => setJoinId(e.target.value.toUpperCase())}
-          maxLength={6}
-        />
-        <button
-          className="bg-blue-600 px-4 py-2 rounded hover:bg-blue-700"
-          onClick={handleJoinProject}
-        >
-          参加
-        </button>
-        {joinError && <span className="ml-4 text-red-400">{joinError}</span>}
-      </div>
-
-      {/* プロジェクトカード一覧 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-        {/* 新規作成カード */}
-        <div
-          className="flex flex-col items-center justify-center border-2 border-dashed border-gray-500 rounded-lg h-48 cursor-pointer hover:bg-gray-800"
-          onClick={() => setShowModal(true)}
-        >
-          <span className="text-5xl mb-2">＋</span>
-          <span className="font-bold">新規プロジェクト作成</span>
-        </div>
-        {/* 既存プロジェクトカード */}
-        {projects.map((p) => (
-          <div key={p.id} className="bg-gray-800 rounded-lg p-6 shadow-md flex flex-col justify-between h-48">
-            <div>
-              <div className="text-lg font-bold mb-2">{p.name}</div>
-              <div className="text-sm text-gray-300 mb-1">作成日: {p.createdAt}</div>
-              <div className="text-sm text-gray-300">参加人数: {p.members}人</div>
-            </div>
-            <div className="mt-4 text-xs text-gray-400">ルームID: {p.id}</div>
+      <div className="max-w-6xl mx-auto">
+        <div className="flex justify-between items-center mb-10">
+          <div>
+            <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">
+              Sefirot
+            </h1>
+            <p className="text-gray-400 mt-2">User: {DEFAULT_DISPLAY_NAME}</p>
           </div>
-        ))}
+          <button 
+            className="bg-gray-800 px-5 py-2 rounded-full border border-gray-700 hover:bg-gray-700 transition"
+            onClick={() => void fetchMyData()}
+          >
+            再読み込み
+          </button>
+        </div>
+
+        {error && (
+          <div className="mb-8 p-4 bg-red-900/20 border border-red-500/50 rounded-lg text-red-300">
+            {error}
+          </div>
+        )}
+
+        {/* 招待コード入力セクション */}
+        <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700 mb-12 flex items-center gap-4">
+          <input
+            type="text"
+            placeholder="招待コードを入力"
+            className="bg-gray-900 border border-gray-600 px-4 py-3 rounded-xl flex-grow focus:ring-2 focus:ring-blue-500 outline-none"
+            value={inviteCode}
+            onChange={(e) => setInviteCode(e.target.value)}
+          />
+          <button
+            className="bg-blue-600 hover:bg-blue-500 px-8 py-3 rounded-xl font-bold transition shadow-lg shadow-blue-900/20"
+            onClick={handleJoinProject}
+          >
+            参加する
+          </button>
+        </div>
+
+        {/* カードグリッド */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+          <button
+            className="h-56 border-2 border-dashed border-gray-600 rounded-3xl flex flex-col items-center justify-center hover:bg-gray-800/50 hover:border-blue-500 transition-all group"
+            onClick={() => setShowModal(true)}
+          >
+            <div className="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center text-2xl group-hover:bg-blue-600 transition-colors">
+              ＋
+            </div>
+            <span className="mt-4 font-bold text-gray-400 group-hover:text-white">新規作成</span>
+          </button>
+
+          {communities.map((c) => (
+            <div key={c.id} className="h-56 bg-gray-800 border border-gray-700 rounded-3xl p-8 flex flex-col justify-between hover:border-blue-500/50 transition-colors cursor-pointer group">
+              <div>
+                <h3 className="text-2xl font-bold group-hover:text-blue-400 transition-colors truncate">{c.name}</h3>
+                <p className="text-gray-500 text-xs mt-2 font-mono uppercase tracking-tighter">Invite Code: {c.invite_code}</p>
+              </div>
+              <div className="flex justify-between items-center text-sm text-gray-400">
+                <span>メンバー: {c.member_count}名</span>
+                <span className="bg-gray-700 px-3 py-1 rounded-full text-[10px]">{new Date(c.created_at).toLocaleDateString()}</span>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* プロジェクト作成モーダル */}
+      {/* 作成モーダル */}
       {showModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-          <div className="bg-white text-black rounded-lg p-8 w-80">
-            <h2 className="text-xl font-bold mb-4">新規プロジェクト作成</h2>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50">
+          <div className="bg-gray-100 text-gray-900 p-8 rounded-3xl w-full max-w-md">
+            <h2 className="text-3xl font-black mb-2">New Project</h2>
+            <p className="text-gray-500 text-sm mb-6">プロジェクト名を入力してください</p>
             <input
               type="text"
-              placeholder="プロジェクト名"
-              className="w-full px-3 py-2 mb-4 border rounded"
+              className="w-full border-2 border-gray-200 px-4 py-3 rounded-2xl mb-6 focus:border-blue-500 outline-none font-bold"
               value={newProjectName}
               onChange={(e) => setNewProjectName(e.target.value)}
-              maxLength={30}
+              autoFocus
             />
-            <div className="flex justify-end gap-2">
-              <button
-                className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
-                onClick={() => setShowModal(false)}
-              >
-                キャンセル
+            <div className="flex gap-4">
+              <button className="flex-1 py-4 font-bold text-gray-400 hover:bg-gray-200 rounded-2xl transition" onClick={() => setShowModal(false)}>
+                やめる
               </button>
-              <button
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              <button 
+                className="flex-1 py-4 font-bold bg-blue-600 text-white rounded-2xl hover:bg-blue-700 disabled:bg-gray-300 transition" 
                 onClick={handleCreateProject}
                 disabled={!newProjectName.trim()}
               >
-                作成
+                作成する
               </button>
             </div>
           </div>
