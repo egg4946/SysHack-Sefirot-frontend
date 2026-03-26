@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom'; // ✨ 1. 画面遷移用のツールをインポート
 
 // 環境変数の取得
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
@@ -13,6 +14,8 @@ type Community = {
 };
 
 const SelectProject: React.FC = () => {
+  const navigate = useNavigate(); // ✨ 2. navigate関数を準備
+
   const [communities, setCommunities] = useState<Community[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -29,7 +32,7 @@ const SelectProject: React.FC = () => {
   };
 
   // プロジェクト（コミュニティ）一覧取得
-  const fetchMyData = async () => {
+  const fetchMyData = useCallback(async () => {
     try {
       setError(null);
       // OpenAPI: GET /me
@@ -48,11 +51,11 @@ const SelectProject: React.FC = () => {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'データの取得に失敗しました');
     }
-  };
+  }, []);
 
   useEffect(() => {
     void fetchMyData();
-  }, []);
+  }, [fetchMyData]);
 
   // 新規作成: POST /community/create
   const handleCreateProject = async () => {
@@ -102,6 +105,7 @@ const SelectProject: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-900 text-white p-8">
       <div className="max-w-6xl mx-auto">
+        {/* ヘッダー部分などそのまま */}
         <div className="flex justify-between items-center mb-10">
           <div>
             <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">
@@ -123,7 +127,7 @@ const SelectProject: React.FC = () => {
           </div>
         )}
 
-        {/* 招待コード入力セクション */}
+        {/* 招待コード入力セクションそのまま */}
         <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700 mb-12 flex items-center gap-4">
           <input
             type="text"
@@ -152,8 +156,13 @@ const SelectProject: React.FC = () => {
             <span className="mt-4 font-bold text-gray-400 group-hover:text-white">新規作成</span>
           </button>
 
+          {/* プロジェクト一覧カード */}
           {communities.map((c) => (
-            <div key={c.id} className="h-56 bg-gray-800 border border-gray-700 rounded-3xl p-8 flex flex-col justify-between hover:border-blue-500/50 transition-colors cursor-pointer group">
+            <div 
+              key={c.id} 
+              className="h-56 bg-gray-800 border border-gray-700 rounded-3xl p-8 flex flex-col justify-between hover:border-blue-500/50 transition-colors cursor-pointer group"
+              onClick={() => navigate(`/project/${c.id}`)} // ✨ 3. クリックでメイン画面に遷移！
+            >
               <div>
                 <h3 className="text-2xl font-bold group-hover:text-blue-400 transition-colors truncate">{c.name}</h3>
                 <p className="text-gray-500 text-xs mt-2 font-mono uppercase tracking-tighter">Invite Code: {c.invite_code}</p>
@@ -167,7 +176,7 @@ const SelectProject: React.FC = () => {
         </div>
       </div>
 
-      {/* 作成モーダル */}
+      {/* 作成モーダルそのまま */}
       {showModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50">
           <div className="bg-gray-100 text-gray-900 p-8 rounded-3xl w-full max-w-md">
