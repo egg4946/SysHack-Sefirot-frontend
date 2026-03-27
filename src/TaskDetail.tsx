@@ -1,7 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-// アイコン名はご利用の環境で動く LuCheckCheck または LuCircleCheck に統一してください
-import { LuArrowLeft, LuPlus, LuCheckCheck, LuCircle, LuTrash2 } from "react-icons/lu";
+import { LuArrowLeft, LuPlus, LuCircleCheck, LuCircle, LuTrash2 } from "react-icons/lu";
+
+// --- 型定義 ---
+interface UserCommunity { id: string; name: string; }
+
+interface UserData {
+  user_data: { id: string; };
+  user_communities: UserCommunity[];
+}
 
 interface Assignee {
   id: string;
@@ -29,170 +36,196 @@ interface Task {
 }
 
 export const TaskDetail: React.FC = () => {
-  // 1. communityId も URL パラメータから受け取るように修正
   const { communityId, taskId } = useParams<{ communityId: string; taskId: string }>();
   const navigate = useNavigate();
   const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
   const token = localStorage.getItem('access_token');
 
   const [task, setTask] = useState<Task | null>(null);
-  const [myProgress, setMyProgress] = useState<number>(0);
+  const [currentUserId, setCurrentUserId] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
-  // 2. データ取得ロジックの修正
   const fetchTaskDetail = useCallback(async () => {
     if (!communityId || !taskId) return;
-
     try {
-      // "dummy" ではなく、URL から取得した実際の communityId をクエリパラメータにセット
-      const res = await fetch(`${apiBase}/tasks?community_id=${communityId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const [meRes, taskRes] = await Promise.all([
+        fetch(`${apiBase}/me`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${apiBase}/tasks?community_id=${communityId}`, { headers: { 'Authorization': `Bearer ${token}` } })
+      ]);
 
-      if (res.ok) {
-        const data: Task[] = await res.json();
+      if (meRes.ok) {
+        const meData = (await meRes.json()) as UserData;
+        setCurrentUserId(meData.user_data.id);
+      }
+
+      if (taskRes.ok) {
+        const data = (await taskRes.json()) as Task[];
         const currentTask = data.find((t: Task) => t.id === taskId);
-        
-        if (currentTask) {
-          setTask(currentTask);
-          
-          // 3. 自分の進捗を表示（暫定的に assignees の中から自分を探す想定）
-          // 現状はリストの先頭を表示。本来はログイン中の userId と比較する。
-          if (currentTask.assignees && currentTask.assignees.length > 0) {
-            setMyProgress(currentTask.assignees[0].progress);
-          }
-        }
-      } else if (res.status === 403) {
-        console.error("アクセス権限がありません。プロジェクトに参加しているか確認してください。");
+        if (currentTask) setTask(currentTask);
       }
     } catch (e) {
-      console.error("通信エラー:", e);
+      console.error("データの取得に失敗しました", e);
     } finally {
       setLoading(false);
     }
   }, [taskId, communityId, apiBase, token]);
 
-  useEffect(() => { fetchTaskDetail(); }, [fetchTaskDetail]);
+  useEffect(() => {
+    fetchTaskDetail();
+  }, [fetchTaskDetail]);
 
-  // 進捗更新処理
+  // --- タスク操作系 ---
+
+  // 1. タスク削除機能 [cite: 7, 10]
+  const handleDeleteTask = async () => {
+    if (!window.confirm("このタスクを削除しますか？")) return;
+    try {
+      const res = await fetch(`${apiBase}/tasks/delete`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ task_id: taskId })
+      });
+      if (res.ok) {
+        navigate(-1); // 削除成功で一覧に戻る
+      } else {
+        alert("削除に失敗しました。子タスクがある場合は先にそちらを削除してください。");
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const handleJoinTask = async () => {
+    await fetch(`${apiBase}/tasks/assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ task_id: taskId, user_id: currentUserId })
+    });
+    fetchTaskDetail();
+  };
+
   const handleProgressChange = async (value: number) => {
-    setMyProgress(value);
     await fetch(`${apiBase}/tasks/progress`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ task_id: taskId, progress: value })
     });
-    fetchTaskDetail(); // 親タスクなどの平均進捗を再計算するため再取得
+    fetchTaskDetail();
   };
 
-  const handleAddChildTask = async () => {
-    if (!task) return;
-    const name = window.prompt("子タスク名を入力してください");
-    if (!name) return;
-    
-    await fetch(`${apiBase}/tasks/create`, {
+  // --- チェックリスト操作系 [cite: 7, 11] ---
+
+  // 2. 項目追加機能
+  const handleAddChecklist = async () => {
+    const content = window.prompt("チェックリストの内容を入力してください");
+    if (!content) return;
+    await fetch(`${apiBase}/checklists/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({
-        community_id: communityId, // URLから取得したIDを使用
-        name,
-        priority: '中',
-        parent_task_id: taskId
-      })
+      body: JSON.stringify({ task_id: taskId, content })
     });
     fetchTaskDetail();
   };
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-screen bg-gray-50 text-blue-600 font-black animate-pulse">
-      LOADING...
-    </div>
+  // 3. 完了切り替え機能
+  const handleToggleChecklist = async (itemId: string, currentStatus: boolean) => {
+    await fetch(`${apiBase}/checklists/update`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ checklist_id: itemId, is_completed: !currentStatus })
+    });
+    fetchTaskDetail();
+  };
+
+  if (loading || !task) return (
+    <div className="flex items-center justify-center h-screen bg-gray-50 text-blue-600 font-black animate-pulse">LOADING...</div>
   );
 
-  if (!task) return (
-    <div className="flex flex-col items-center justify-center h-screen bg-gray-50 space-y-4">
-      <p className="text-xl font-black text-gray-400">タスクが見つかりません</p>
-      <button onClick={() => navigate(-1)} className="text-blue-600 font-bold underline">戻る</button>
-    </div>
-  );
+  const isAssigned = task.assignees.some(a => a.id === currentUserId);
+  const myData = task.assignees.find(a => a.id === currentUserId);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50 p-4 lg:p-10 text-gray-900">
-      <div className="max-w-3xl mx-auto space-y-6">
-        <button 
-          onClick={() => navigate(-1)} 
-          className="flex items-center gap-2 text-blue-600 font-extrabold hover:text-blue-800 transition"
-        >
-          <LuArrowLeft className="w-5 h-5" /> プロジェクトへ戻る
+    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
+      <header className="flex items-center justify-between px-6 py-4 border-b bg-white shadow-md sticky top-0 z-30">
+        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-blue-600 font-extrabold hover:text-blue-800 transition">
+          <LuArrowLeft className="w-5 h-5" /> 戻る
         </button>
+        <h1 className="text-lg font-black text-gray-800 truncate px-4">{task.name}</h1>
+        {/* ✨ タスク削除ボタンを追加 */}
+        <button onClick={handleDeleteTask} className="p-2 text-gray-400 hover:text-red-500 transition">
+          <LuTrash2 size={24} />
+        </button>
+      </header>
 
-        <div className="bg-white rounded-[2.5rem] shadow-2xl p-8 lg:p-12 border border-gray-100">
-          <div className="flex justify-between items-start mb-8">
-            <div className="space-y-2">
-              <span className={`text-xs font-black px-4 py-1.5 rounded-full uppercase tracking-widest ${
-                task.priority === '大' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
-              }`}>
-                {task.priority}優先
-              </span>
-              <h1 className="text-4xl lg:text-5xl font-black text-gray-900 leading-tight tracking-tighter">
-                {task.name}
-              </h1>
+      <main className="p-6 max-w-3xl mx-auto space-y-8 pb-24">
+        <div className="bg-white p-6 rounded-3xl shadow-xl border border-gray-100">
+          <div className="flex items-center gap-4">
+            <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Task Total</span>
+            <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden border border-gray-50">
+              <div className="h-full bg-gradient-to-r from-emerald-400 to-blue-500 transition-all duration-1000" style={{ width: `${task.progress}%` }} />
             </div>
-            <button className="p-4 bg-gray-50 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-2xl transition duration-200">
-              <LuTrash2 size={24} />
-            </button>
+            <span className="text-sm font-black text-blue-600 w-10 text-right">{task.progress}%</span>
           </div>
-
-          {/* 進捗コントロール */}
-          <div className="bg-gradient-to-r from-blue-600 to-blue-500 rounded-3xl p-8 mb-10 shadow-lg shadow-blue-200">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="font-black text-white text-lg tracking-wide uppercase">Your Progress</h2>
-              <span className="text-4xl font-black text-white">{myProgress}%</span>
-            </div>
-            <input 
-              type="range" 
-              min="0" max="100" 
-              value={myProgress}
-              onChange={(e) => handleProgressChange(parseInt(e.target.value))}
-              className="w-full h-4 bg-blue-400/30 rounded-full appearance-none cursor-pointer accent-white border border-white/20 shadow-inner"
-            />
-          </div>
-
-          {/* チェックリスト */}
-          <section className="mb-10">
-            <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
-              <h3 className="text-2xl font-black text-gray-800 tracking-tight">Checklist</h3>
-              <button className="bg-blue-50 text-blue-600 p-2 rounded-xl hover:bg-blue-100 transition shadow-sm">
-                <LuPlus size={24} />
-              </button>
-            </div>
-            <div className="space-y-4">
-              {task.checklists && task.checklists.length > 0 ? (
-                task.checklists.map(item => (
-                  <div key={item.id} className="flex items-center gap-4 p-5 bg-gray-50/50 border border-gray-100 rounded-2xl hover:bg-white hover:shadow-md transition duration-200">
-                    {item.is_completed ? <LuCheckCheck className="text-green-500 w-6 h-6" /> : <LuCircle className="text-gray-300 w-6 h-6" />}
-                    <span className={`flex-1 font-bold text-lg ${item.is_completed ? 'line-through text-gray-400' : 'text-gray-700'}`}>
-                      {item.content}
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <p className="text-center py-6 text-gray-400 font-bold italic">No items yet.</p>
-              )}
-            </div>
-          </section>
-
-          {/* 子タスク追加（親タスクの場合のみ表示） */}
-          {!task.parent_task_id && (
-            <button 
-              onClick={handleAddChildTask}
-              className="w-full py-5 bg-gradient-to-r from-blue-600 to-green-400 text-white rounded-[1.5rem] font-black text-xl shadow-xl shadow-blue-500/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3"
-            >
-              <LuPlus className="w-6 h-6" /> 子タスクを追加
-            </button>
-          )}
         </div>
-      </div>
+
+        {!isAssigned ? (
+          <button onClick={handleJoinTask} className="w-full py-6 bg-gradient-to-r from-blue-600 to-green-400 text-white rounded-3xl font-black text-xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
+            <LuPlus className="w-6 h-6" /> このタスクに参加して進捗を入力
+          </button>
+        ) : (
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-blue-100">
+            <div className="flex justify-between items-center mb-6">
+              <span className="font-black text-xs uppercase tracking-widest text-blue-500">{myData?.display_name}'s Progress</span>
+              <span className="text-4xl font-black text-blue-600">{myData?.progress}%</span>
+            </div>
+            <input type="range" min="0" max="100" value={myData?.progress || 0} onChange={(e) => handleProgressChange(parseInt(e.target.value))} className="w-full h-3 bg-gray-100 rounded-full appearance-none cursor-pointer accent-blue-600 border" />
+            <p className="text-xs text-gray-400 mt-4 text-center font-bold tracking-tight">※あなたの入力がタスク全体の進捗に反映されます</p>
+          </div>
+        )}
+
+        {task.assignees.filter(a => a.id !== currentUserId).length > 0 && (
+          <div className="space-y-4">
+            <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-4">Team Progress</h3>
+            <div className="space-y-3">
+              {task.assignees.filter(a => a.id !== currentUserId).map(a => (
+                <div key={a.id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+                  <span className="flex-1 font-bold text-gray-700">{a.display_name}</span>
+                  <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-400" style={{ width: `${a.progress}%` }} />
+                  </div>
+                  <span className="text-sm font-black text-blue-600 w-8">{a.progress}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
+          <div className="flex justify-between items-center mb-6 border-b pb-4">
+            <h3 className="text-2xl font-black text-gray-800 tracking-tight">Checklist</h3>
+            {/* ✨ 項目追加ボタンの処理を紐付け */}
+            <button onClick={handleAddChecklist} className="bg-blue-50 text-blue-600 p-2 rounded-xl hover:bg-blue-100 transition shadow-sm">
+              <LuPlus size={24} />
+            </button>
+          </div>
+          <div className="space-y-4">
+            {task.checklists && task.checklists.length > 0 ? (
+              task.checklists.map(item => (
+                <div 
+                  key={item.id} 
+                  className="flex items-center gap-4 p-5 bg-gray-50/50 border border-gray-100 rounded-2xl hover:bg-white hover:shadow-md transition cursor-pointer"
+                  onClick={() => handleToggleChecklist(item.id, item.is_completed)}
+                >
+                  {item.is_completed ? <LuCircleCheck className="text-green-500 w-6 h-6" /> : <LuCircle className="text-gray-300 w-6 h-6" />}
+                  <span className={`flex-1 font-bold text-lg ${item.is_completed ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                    {item.content}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <p className="text-center py-6 text-gray-400 font-bold italic">No items yet.</p>
+            )}
+          </div>
+        </section>
+      </main>
     </div>
   );
 };

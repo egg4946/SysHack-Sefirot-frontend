@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Chat } from './Chat';
 import { LuX, LuMessageSquare, LuBackpack, LuPlus, LuChevronRight, LuMenu } from "react-icons/lu";
 
-// --- API仕様 (api.yaml) に完全準拠した型定義 ---
 interface Task {
   id: string;
   name: string; 
@@ -35,7 +34,6 @@ export const ProjectMain: React.FC = () => {
   const [sortBy, setSortBy] = useState<'deadline' | 'progress' | 'created_at'>('created_at');
   const lastMessageIdRef = useRef<string | null>(null);
 
-  // ログイン画面の書き方に合わせ、環境変数からBaseURLを取得
   const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
   const fetchProjectData = useCallback(async () => {
@@ -43,18 +41,17 @@ export const ProjectMain: React.FC = () => {
     if (!token || !communityId) return;
 
     try {
-      // ユーザー情報取得
       const meRes = await fetch(`${apiBase}/me`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (meRes.ok) {
         const meData: UserData = await meRes.json();
         setCurrentUserId(meData.user_data.id);
-        const myCommunity = meData.user_communities.find(c => c.id === communityId);
+        // 型を UserCommunity に指定することで警告が消えます
+        const myCommunity = meData.user_communities.find((c: UserCommunity) => c.id === communityId);
         if (myCommunity) setProjectName(myCommunity.name);
       }
 
-      // タスク一覧取得
       const taskRes = await fetch(`${apiBase}/tasks?community_id=${communityId}&sort_by=${sortBy}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -75,7 +72,6 @@ export const ProjectMain: React.FC = () => {
 
   useEffect(() => { fetchProjectData(); }, [fetchProjectData]);
 
-  // チャット通知監視
   useEffect(() => {
     if (!communityId || isChatOpen) return;
     const token = localStorage.getItem('access_token');
@@ -126,70 +122,74 @@ export const ProjectMain: React.FC = () => {
 
     if (res.ok) {
       fetchProjectData();
-    } else {
-      alert("タスクの作成に失敗しました。");
     }
   };
 
-  if (isLoading) return (
-    <div className="flex items-center justify-center h-screen bg-gray-50 text-gray-500 font-semibold animate-pulse">
-      読み込み中...
-    </div>
-  );
+  // プロジェクト全体の進捗率を計算 (全タスクの平均)
+  const totalProgress = tasks.length > 0 
+    ? Math.round(tasks.reduce((acc, t) => acc + t.progress, 0) / tasks.length) 
+    : 0;
+
+  if (isLoading) return <div className="p-8 text-center animate-pulse">読み込み中...</div>;
 
   return (
     <div className="relative flex flex-col h-screen bg-gray-50 text-gray-900 font-sans overflow-hidden">
-      {/* ヘッダー：ログイン画面風の影と色使い */}
       <header className="flex items-center justify-between px-6 py-4 border-b bg-white shadow-md z-30">
         <div className="flex items-center gap-5">
-          <button 
-            onClick={() => navigate('/select-project')} 
-            className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-bold transition duration-150"
-          >
+          <button onClick={() => navigate('/select-project')} className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-bold transition">
             <LuBackpack className="w-5 h-5" />
-            プロジェクト一覧
+            一覧
           </button>
           <div className="w-px h-6 bg-gray-200" />
-          <h1 className="text-xl font-extrabold tracking-tight text-gray-800 drop-shadow-sm">
-            {projectName || 'プロジェクトメイン'}
-          </h1>
+          <h1 className="text-xl font-extrabold tracking-tight text-gray-800">{projectName || 'Project'}</h1>
         </div>
         <div className="flex items-center gap-4">
           <select 
-            className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white focus:ring-2 focus:ring-blue-400 outline-none transition"
+            className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white outline-none"
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
+            // onChange の (e.target.value as any) を以下のように修正
+            onChange={(e) => setSortBy(e.target.value as 'created_at' | 'deadline' | 'progress')}
           >
             <option value="created_at">作成順</option>
             <option value="deadline">しめきり順</option>
             <option value="progress">進捗順</option>
           </select>
-          <button className="w-10 h-10 bg-white border border-gray-200 rounded-xl shadow-sm hover:bg-gray-50 flex items-center justify-center transition">
+          <button className="w-10 h-10 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-center">
             <LuMenu className="w-6 h-6 text-gray-600" />
           </button>
         </div>
       </header>
 
-      {/* メイン：タスクカードにログイン画面風のスタイルを適用 */}
+      {/* プロジェクト全体の進捗バー */}
+      <div className="bg-white px-6 py-4 border-b shadow-sm z-20">
+        <div className="max-w-5xl mx-auto flex items-center gap-4">
+          <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Total Progress</span>
+          <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden border border-gray-50">
+            <div 
+              className="h-full bg-gradient-to-r from-emerald-400 to-blue-500 transition-all duration-1000" 
+              style={{ width: `${totalProgress}%` }} 
+            />
+          </div>
+          <span className="text-sm font-black text-blue-600 w-10 text-right">{totalProgress}%</span>
+        </div>
+      </div>
+
       <main className="flex-1 p-6 lg:p-10 overflow-y-auto bg-gradient-to-b from-white to-blue-50">
-        <div className="max-w-5xl mx-auto space-y-6">
+        <div className="max-w-5xl mx-auto space-y-6 pb-24">
           {tasks.map(parent => (
-            <div key={parent.id} className="bg-white border border-gray-100 rounded-2xl shadow-xl overflow-hidden hover:shadow-2xl transition-shadow duration-300">
-              {/* 親タスク */}
+            <div key={parent.id} className="bg-white border border-gray-100 rounded-2xl shadow-xl overflow-hidden hover:shadow-2xl transition-all duration-300">
               <div 
                 className="flex items-center p-5 hover:bg-blue-50/30 transition cursor-pointer" 
                 onClick={() => navigate(`/project/${communityId}/task/${parent.id}`)}
               >
                 <div className="flex-1 flex items-center gap-4">
-                  <span className={`text-xs font-bold px-3 py-1 rounded-full ${
-                    parent.priority === '大' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
-                  }`}>
+                  <span className={`text-xs font-bold px-3 py-1 rounded-full ${parent.priority === '大' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
                     {parent.priority}
                   </span>
                   <span className="font-extrabold text-lg text-gray-800">{parent.name}</span>
                 </div>
                 <div className="flex items-center gap-6">
-                  <div className="w-40 h-2.5 bg-gray-100 rounded-full overflow-hidden border border-gray-50">
+                  <div className="w-32 h-2.5 bg-gray-100 rounded-full overflow-hidden border border-gray-50">
                     <div className="h-full bg-gradient-to-r from-blue-500 to-green-400 transition-all duration-500" style={{ width: `${parent.progress}%` }} />
                   </div>
                   <span className="text-sm font-black text-blue-600 w-10">{parent.progress}%</span>
@@ -197,7 +197,6 @@ export const ProjectMain: React.FC = () => {
                 </div>
               </div>
 
-              {/* 子タスク */}
               {parent.childTasks && parent.childTasks.length > 0 && (
                 <div className="bg-gray-50/50 border-t border-gray-100 divide-y divide-gray-100">
                   {parent.childTasks.map(child => (
@@ -218,33 +217,26 @@ export const ProjectMain: React.FC = () => {
             </div>
           ))}
 
-          {/* 親タスク追加：ログインボタン風のグラデーション */}
           <button 
             onClick={handleCreateParentTask}
-            className="w-full py-5 border-2 border-dashed border-blue-200 rounded-2xl text-blue-500 font-bold hover:bg-blue-50 hover:border-blue-400 transition-all flex items-center justify-center gap-2 group"
+            className="w-full py-5 border-2 border-dashed border-blue-200 rounded-2xl text-blue-500 font-bold hover:bg-blue-50 transition-all flex items-center justify-center gap-2 group"
           >
-            <LuPlus className="w-5 h-5 group-hover:scale-125 transition-transform" />
+            <LuPlus className="group-hover:scale-125 transition-transform" />
             新しいタスクを作成
           </button>
         </div>
       </main>
 
-      {/* チャット画面コンテナ */}
-      <div className={`fixed z-50 transition-all duration-300 transform ${
-        'inset-0 w-full h-full sm:inset-auto sm:bottom-28 sm:right-6 sm:w-[400px] sm:h-[650px] sm:rounded-3xl sm:shadow-2xl sm:border sm:border-gray-200 overflow-hidden'
-      } ${isChatOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95 pointer-events-none'}`}>
+      <div className={`fixed z-50 transition-all duration-300 transform ${'inset-0 w-full h-full sm:inset-auto sm:bottom-28 sm:right-6 sm:w-[400px] sm:h-[650px] sm:rounded-3xl sm:shadow-2xl sm:border sm:border-gray-200 overflow-hidden'} ${isChatOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95 pointer-events-none'}`}>
         {currentUserId && communityId && isChatOpen && (
           <Chat communityId={communityId} currentUserId={currentUserId} onClose={handleToggleChat} />
         )}
       </div>
 
-      {/* フローティングチャットアイコン：ログインボタン風の配色 */}
       <div className="fixed bottom-8 right-8 z-40">
         <button 
           onClick={handleToggleChat}
-          className={`relative flex items-center justify-center w-20 h-20 rounded-full shadow-2xl transition-all duration-200 active:scale-90 ${
-            isChatOpen ? 'bg-gray-100 text-gray-600' : 'bg-gradient-to-r from-blue-600 to-green-400 text-white shadow-blue-500/40'
-          }`}
+          className={`relative flex items-center justify-center w-20 h-20 rounded-full shadow-2xl transition-all duration-200 active:scale-90 ${isChatOpen ? 'bg-gray-100 text-gray-600' : 'bg-gradient-to-r from-blue-600 to-green-400 text-white shadow-blue-500/40'}`}
         >
           {isChatOpen ? <LuX className="w-10 h-10" /> : (
             <>
