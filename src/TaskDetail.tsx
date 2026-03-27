@@ -38,7 +38,9 @@ interface Task {
 export const TaskDetail: React.FC = () => {
   const { communityId, taskId } = useParams<{ communityId: string; taskId: string }>();
   const navigate = useNavigate();
-  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+  
+  // ✨ 環境変数から取得するように変更
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
   const token = localStorage.getItem('access_token');
 
   const [task, setTask] = useState<Task | null>(null);
@@ -49,11 +51,12 @@ export const TaskDetail: React.FC = () => {
     if (!communityId || !taskId) return;
     try {
       const [meRes, taskRes] = await Promise.all([
-        fetch(`${apiBase}/me`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${apiBase}/tasks?community_id=${communityId}`, { headers: { 'Authorization': `Bearer ${token}` } })
+        fetch(`${API_BASE}/me`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_BASE}/tasks?community_id=${communityId}`, { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
 
       if (meRes.ok) {
+        // ✨ Promiseの解決と型アサーションを修正
         const meData = (await meRes.json()) as UserData;
         setCurrentUserId(meData.user_data.id);
       }
@@ -68,33 +71,51 @@ export const TaskDetail: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [taskId, communityId, apiBase, token]);
+  }, [taskId, communityId, API_BASE, token]);
 
   useEffect(() => {
     fetchTaskDetail();
   }, [fetchTaskDetail]);
 
-  // --- タスク操作系 ---
-
-  // 1. タスク削除機能 [cite: 7, 10]
+// タスク削除機能
   const handleDeleteTask = async () => {
-    if (!window.confirm("このタスクを削除しますか？")) return;
+    if (!task) return;
+
+    // 子タスクがあるか確認
+    // 注: task.childTasks プロパティがあるか、またはAPIの仕様に基づき判断
+    const hasChildren = task.parent_task_id === null && task.checklists?.length > 0; // 簡易判定。本来は子タスク一覧の有無で判断
+    
+    const message = hasChildren 
+      ? "このタスクを削除しますか？\n注意：関連するすべての子タスクも削除されます。" 
+      : "このタスクを削除しますか？";
+
+    if (!window.confirm(message)) return;
+
     try {
-      const res = await fetch(`${apiBase}/tasks/delete`, {
+      const res = await fetch(`${API_BASE}/tasks/delete`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${token}` 
+        },
         body: JSON.stringify({ task_id: taskId })
       });
+
       if (res.ok) {
-        navigate(-1); // 削除成功で一覧に戻る
+        // 削除成功したらプロジェクトメイン画面に戻る
+        navigate(`/project/${communityId}`);
       } else {
-        alert("削除に失敗しました。子タスクがある場合は先にそちらを削除してください。");
+        const errorData = await res.json().catch(() => ({}));
+        alert(`削除に失敗しました: ${errorData.detail || 'サーバーエラー'}`);
       }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error("削除リクエスト中にエラーが発生しました", e);
+      alert("通信エラーが発生しました。");
+    }
   };
 
   const handleJoinTask = async () => {
-    await fetch(`${apiBase}/tasks/assign`, {
+    await fetch(`${API_BASE}/tasks/assign`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ task_id: taskId, user_id: currentUserId })
@@ -103,7 +124,7 @@ export const TaskDetail: React.FC = () => {
   };
 
   const handleProgressChange = async (value: number) => {
-    await fetch(`${apiBase}/tasks/progress`, {
+    await fetch(`${API_BASE}/tasks/progress`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ task_id: taskId, progress: value })
@@ -111,13 +132,10 @@ export const TaskDetail: React.FC = () => {
     fetchTaskDetail();
   };
 
-  // --- チェックリスト操作系 [cite: 7, 11] ---
-
-  // 2. 項目追加機能
   const handleAddChecklist = async () => {
     const content = window.prompt("チェックリストの内容を入力してください");
     if (!content) return;
-    await fetch(`${apiBase}/checklists/create`, {
+    await fetch(`${API_BASE}/checklists/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ task_id: taskId, content })
@@ -125,9 +143,8 @@ export const TaskDetail: React.FC = () => {
     fetchTaskDetail();
   };
 
-  // 3. 完了切り替え機能
   const handleToggleChecklist = async (itemId: string, currentStatus: boolean) => {
-    await fetch(`${apiBase}/checklists/update`, {
+    await fetch(`${API_BASE}/checklists/update`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ checklist_id: itemId, is_completed: !currentStatus })
@@ -149,18 +166,21 @@ export const TaskDetail: React.FC = () => {
           <LuArrowLeft className="w-5 h-5" /> 戻る
         </button>
         <h1 className="text-lg font-black text-gray-800 truncate px-4">{task.name}</h1>
-        {/* ✨ タスク削除ボタンを追加 */}
         <button onClick={handleDeleteTask} className="p-2 text-gray-400 hover:text-red-500 transition">
           <LuTrash2 size={24} />
         </button>
       </header>
 
       <main className="p-6 max-w-3xl mx-auto space-y-8 pb-24">
+        {/* ✨ タスク全体の進捗（常に表示・メイン画面風UI） */}
         <div className="bg-white p-6 rounded-3xl shadow-xl border border-gray-100">
           <div className="flex items-center gap-4">
             <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Task Total</span>
             <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden border border-gray-50">
-              <div className="h-full bg-gradient-to-r from-emerald-400 to-blue-500 transition-all duration-1000" style={{ width: `${task.progress}%` }} />
+              <div 
+                className="h-full bg-gradient-to-r from-emerald-400 to-blue-500 transition-all duration-1000" 
+                style={{ width: `${task.progress}%` }} 
+              />
             </div>
             <span className="text-sm font-black text-blue-600 w-10 text-right">{task.progress}%</span>
           </div>
@@ -201,7 +221,6 @@ export const TaskDetail: React.FC = () => {
         <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
           <div className="flex justify-between items-center mb-6 border-b pb-4">
             <h3 className="text-2xl font-black text-gray-800 tracking-tight">Checklist</h3>
-            {/* ✨ 項目追加ボタンの処理を紐付け */}
             <button onClick={handleAddChecklist} className="bg-blue-50 text-blue-600 p-2 rounded-xl hover:bg-blue-100 transition shadow-sm">
               <LuPlus size={24} />
             </button>

@@ -34,25 +34,24 @@ export const ProjectMain: React.FC = () => {
   const [sortBy, setSortBy] = useState<'deadline' | 'progress' | 'created_at'>('created_at');
   const lastMessageIdRef = useRef<string | null>(null);
 
-  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
   const fetchProjectData = useCallback(async () => {
     const token = localStorage.getItem('access_token');
     if (!token || !communityId) return;
 
     try {
-      const meRes = await fetch(`${apiBase}/me`, {
+      const meRes = await fetch(`${API_BASE}/me`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (meRes.ok) {
         const meData: UserData = await meRes.json();
         setCurrentUserId(meData.user_data.id);
-        // 型を UserCommunity に指定することで警告が消えます
         const myCommunity = meData.user_communities.find((c: UserCommunity) => c.id === communityId);
         if (myCommunity) setProjectName(myCommunity.name);
       }
 
-      const taskRes = await fetch(`${apiBase}/tasks?community_id=${communityId}&sort_by=${sortBy}`, {
+      const taskRes = await fetch(`${API_BASE}/tasks?community_id=${communityId}&sort_by=${sortBy}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (taskRes.ok) {
@@ -68,10 +67,11 @@ export const ProjectMain: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [communityId, sortBy, apiBase]);
+  }, [communityId, sortBy, API_BASE]);
 
   useEffect(() => { fetchProjectData(); }, [fetchProjectData]);
 
+  // チャット監視ポーリング
   useEffect(() => {
     if (!communityId || isChatOpen) return;
     const token = localStorage.getItem('access_token');
@@ -79,7 +79,7 @@ export const ProjectMain: React.FC = () => {
 
     const intervalId = setInterval(async () => {
       try {
-        const res = await fetch(`${apiBase}/chat/messages?community_id=${communityId}&limit=1`, {
+        const res = await fetch(`${API_BASE}/chat/messages?community_id=${communityId}&limit=1`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
@@ -95,7 +95,7 @@ export const ProjectMain: React.FC = () => {
       } catch (error) { console.error(error); }
     }, 3000);
     return () => clearInterval(intervalId);
-  }, [communityId, isChatOpen, apiBase]);
+  }, [communityId, isChatOpen, API_BASE]);
 
   const handleToggleChat = useCallback(() => {
     setIsChatOpen(prev => {
@@ -104,28 +104,39 @@ export const ProjectMain: React.FC = () => {
     });
   }, []);
 
+  // ✨ タスク作成機能（修正版）
   const handleCreateParentTask = async () => {
     const title = window.prompt("新しい親タスク名を入力してください");
     if (!title) return;
     const token = localStorage.getItem('access_token');
     
-    const res = await fetch(`${apiBase}/tasks/create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ 
-        community_id: communityId, 
-        name: title,
-        priority: '中',
-        parent_task_id: null 
-      })
-    });
+    try {
+      const res = await fetch(`${API_BASE}/tasks/create`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ 
+          community_id: communityId, 
+          name: title,
+          priority: '中', // api.yamlのenumに合わせる
+          parent_task_id: null 
+        })
+      });
 
-    if (res.ok) {
-      fetchProjectData();
+      if (res.ok) {
+        // 作成成功したら一覧を更新
+        fetchProjectData();
+      } else {
+        const err = await res.json();
+        alert(`タスク作成失敗: ${err.detail || 'サーバーエラー'}`);
+      }
+    } catch {
+      alert("通信エラーが発生しました。");
     }
   };
 
-  // プロジェクト全体の進捗率を計算 (全タスクの平均)
   const totalProgress = tasks.length > 0 
     ? Math.round(tasks.reduce((acc, t) => acc + t.progress, 0) / tasks.length) 
     : 0;
@@ -147,7 +158,6 @@ export const ProjectMain: React.FC = () => {
           <select 
             className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white outline-none"
             value={sortBy}
-            // onChange の (e.target.value as any) を以下のように修正
             onChange={(e) => setSortBy(e.target.value as 'created_at' | 'deadline' | 'progress')}
           >
             <option value="created_at">作成順</option>
@@ -160,7 +170,6 @@ export const ProjectMain: React.FC = () => {
         </div>
       </header>
 
-      {/* プロジェクト全体の進捗バー */}
       <div className="bg-white px-6 py-4 border-b shadow-sm z-20">
         <div className="max-w-5xl mx-auto flex items-center gap-4">
           <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Total Progress</span>
