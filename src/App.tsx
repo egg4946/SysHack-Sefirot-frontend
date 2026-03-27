@@ -4,11 +4,10 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Login from './Login';
 import Register from './Register';
 import SelectProject from './SelectProject';
-import { ProjectMain } from './ProjectMain'; // ✨ 先ほど作った画面をインポート
+import { ProjectMain } from './ProjectMain'; 
+import { TaskDetail } from './TaskDetail'; // 1. インポートを追加
 
 const App: React.FC = () => {
-  // プロジェクト画面に戻る処理
-
   return (
     <Router>
       <Routes>
@@ -16,9 +15,13 @@ const App: React.FC = () => {
         <Route path="/register" element={<Register />} />
         <Route path="/select-project" element={<SelectProject />} />
         
-        {/* ✨ ここを追加！ :id の部分に選んだプロジェクトのIDが入ります */}
+        {/* プロジェクトメイン画面 */}
         <Route path="/project/:id" element={<ProjectMain />} />
         
+        {/* 2. タスク詳細画面を追加 (taskIdをパラメータとして受け取る) */}
+        <Route path="/project/:communityId/task/:taskId" element={<TaskDetail />} />
+        
+        {/* 未定義のパスはログインへリダイレクト */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Router>
