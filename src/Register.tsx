@@ -38,7 +38,7 @@ const Register: React.FC = () => {
         return;
       }
       navigate('/login');
-    } catch{
+    } catch {
       setError('通信エラーが発生しました');
     } finally {
       setLoading(false);

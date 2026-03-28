@@ -26,7 +26,7 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // 1. ✨ getMessages を useCallback でラップして実体を固定する
+  // 1. fetch 本体を useCallback で定義（依存関係を明確にする）
   const getMessages = useCallback(async (token: string) => {
     const res = await fetch(`${API_BASE}/chat/messages?community_id=${communityId}`, {
       headers: { 'Authorization': `Bearer ${token}` }
@@ -35,7 +35,7 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
     return res.json();
   }, [communityId]); // communityId が変わった時だけ関数が再生成される
 
-  // 2. ✨ useEffect の依存配列に getMessages を含める
+  // 2. useEffect 内で安全に呼び出し
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     if (!token) return;
@@ -53,14 +53,14 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
       }
     };
 
-    updateMessages();
-    const intervalId = setInterval(updateMessages, 3000);
+    updateMessages(); // 初回読み込み
+    const intervalId = setInterval(updateMessages, 3000); // 3秒おき
 
     return () => {
       isMounted = false;
       clearInterval(intervalId);
     };
-    // getMessages を入れることで「依存関係が足りない」警告を解消
+    // getMessages を依存配列に含めることで警告を解消
   }, [getMessages]); 
 
   useEffect(() => {

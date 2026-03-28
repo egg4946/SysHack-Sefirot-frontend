@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom'; // ✨ 1. 画面遷移用のツールをインポート
 
 // 環境変数の取得
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const API_BASE = import.meta.env.VITE_API_BASE_URL;
 const DEFAULT_DISPLAY_NAME = import.meta.env.VITE_DEFAULT_DISPLAY_NAME || "Sefirot User";
 
 type Community = {

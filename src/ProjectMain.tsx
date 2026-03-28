@@ -1,22 +1,23 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Chat } from './Chat';
-import { LuX, LuMessageSquare, LuBackpack, LuPlus, LuChevronRight, LuMenu } from "react-icons/lu";
+import { LuX, LuMessageSquare, LuBackpack } from "react-icons/lu";
 
-interface Task {
+const API_BASE = import.meta.env.VITE_API_BASE_URL;
+
+interface LatestMessageResponse {
   id: string;
-  name: string; 
-  progress: number;
-  status: '未着手' | '進行中' | '完了';
-  priority: '大' | '中' | '小';
-  parent_task_id: string | null; 
-  childTasks?: Task[]; 
 }
 
-interface LatestMessageResponse { id: string; }
-interface UserCommunity { id: string; name: string; }
+interface UserCommunity {
+  id: string;
+  name: string;
+}
+
 interface UserData {
-  user_data: { id: string; };
+  user_data: {
+    id: string;
+  };
   user_communities: UserCommunity[];
 }
 
@@ -24,61 +25,58 @@ export const ProjectMain: React.FC = () => {
   const { id: communityId } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [projectName, setProjectName] = useState<string>('');
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
-  
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
-  const [sortBy, setSortBy] = useState<'deadline' | 'progress' | 'created_at'>('created_at');
   const lastMessageIdRef = useRef<string | null>(null);
+  const [projectName, setProjectName] = useState<string>('');
 
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
-
-  const fetchProjectData = useCallback(async () => {
-    const token = localStorage.getItem('access_token');
-    if (!token || !communityId) return;
-
-    try {
-      const meRes = await fetch(`${API_BASE}/me`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (meRes.ok) {
-        const meData: UserData = await meRes.json();
-        setCurrentUserId(meData.user_data.id);
-        const myCommunity = meData.user_communities.find((c: UserCommunity) => c.id === communityId);
-        if (myCommunity) setProjectName(myCommunity.name);
-      }
-
-      const taskRes = await fetch(`${API_BASE}/tasks?community_id=${communityId}&sort_by=${sortBy}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (taskRes.ok) {
-        const rawTasks: Task[] = await taskRes.json();
-        const tree = rawTasks.filter(t => !t.parent_task_id).map(parent => ({
-          ...parent,
-          childTasks: rawTasks.filter(child => child.parent_task_id === parent.id)
-        }));
-        setTasks(tree);
-      }
-    } catch (e) {
-      console.error("API Error:", e);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [communityId, sortBy, API_BASE]);
-
-  useEffect(() => { fetchProjectData(); }, [fetchProjectData]);
-
-  // チャット監視ポーリング
   useEffect(() => {
-    if (!communityId || isChatOpen) return;
+    const fetchInitialData = async () => {
+      try {
+        const token = localStorage.getItem('access_token');
+        if (!token) return;
+
+        const meRes = await fetch(`${API_BASE}/me`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (meRes.ok) {
+          const meData: UserData = await meRes.json();
+          setCurrentUserId(meData.user_data.id);
+          
+          const myCommunity = meData.user_communities.find((c: UserCommunity) => c.id === communityId);
+          if (myCommunity) {
+            setProjectName(myCommunity.name);
+          }
+        }
+      } catch (error) {
+        console.error('データの取得に失敗しました', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchInitialData();
+  }, [communityId]);
+
+  useEffect(() => {
+    if (!communityId) return;
+
     const token = localStorage.getItem('access_token');
     if (!token) return;
+    fetch(`${API_BASE}/chat/messages?community_id=${communityId}&limit=1`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => { if(data.length > 0) lastMessageIdRef.current = data[0].id; })
+    .catch(error => console.error(error));
 
     const intervalId = setInterval(async () => {
+      if (!communityId || isChatOpen) return; 
+
       try {
+        const token = localStorage.getItem('access_token');
         const res = await fetch(`${API_BASE}/chat/messages?community_id=${communityId}&limit=1`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -88,172 +86,88 @@ export const ProjectMain: React.FC = () => {
             const latestMessageId = data[0].id;
             if (lastMessageIdRef.current && latestMessageId !== lastMessageIdRef.current) {
               setHasUnread(true);
+              lastMessageIdRef.current = latestMessageId;
+            } else if (!lastMessageIdRef.current) {
+              lastMessageIdRef.current = latestMessageId;
             }
-            lastMessageIdRef.current = latestMessageId;
           }
         }
       } catch (error) { console.error(error); }
     }, 3000);
+
     return () => clearInterval(intervalId);
-  }, [communityId, isChatOpen, API_BASE]);
+  }, [communityId, isChatOpen]);
+
 
   const handleToggleChat = useCallback(() => {
     setIsChatOpen(prev => {
-      if (!prev) setHasUnread(false);
-      return !prev;
+      const newState = !prev;
+      if (newState === true) {
+        setHasUnread(false);
+      }
+      return newState;
     });
   }, []);
 
-  // ✨ タスク作成機能（修正版）
-  const handleCreateParentTask = async () => {
-    const title = window.prompt("新しい親タスク名を入力してください");
-    if (!title) return;
-    const token = localStorage.getItem('access_token');
-    
-    try {
-      const res = await fetch(`${API_BASE}/tasks/create`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          'Authorization': `Bearer ${token}` 
-        },
-        body: JSON.stringify({ 
-          community_id: communityId, 
-          name: title,
-          priority: '中', // api.yamlのenumに合わせる
-          parent_task_id: null 
-        })
-      });
-
-      if (res.ok) {
-        // 作成成功したら一覧を更新
-        fetchProjectData();
-      } else {
-        const err = await res.json();
-        alert(`タスク作成失敗: ${err.detail || 'サーバーエラー'}`);
-      }
-    } catch {
-      alert("通信エラーが発生しました。");
-    }
-  };
-
-  const totalProgress = tasks.length > 0 
-    ? Math.round(tasks.reduce((acc, t) => acc + t.progress, 0) / tasks.length) 
-    : 0;
-
-  if (isLoading) return <div className="p-8 text-center animate-pulse">読み込み中...</div>;
+  if (isLoading) {
+    return <div className="p-8 text-center text-gray-500">読み込み中...</div>;
+  }
 
   return (
     <div className="relative flex flex-col h-screen bg-gray-50 text-gray-900 font-sans overflow-hidden">
-      <header className="flex items-center justify-between px-6 py-4 border-b bg-white shadow-md z-30">
+      <header className="flex items-center justify-between px-6 py-3 border-b bg-white shadow-sm z-30">
         <div className="flex items-center gap-5">
-          <button onClick={() => navigate('/select-project')} className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-bold transition">
+          <button onClick={() => navigate('/select-project')} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 font-medium transition duration-150">
             <LuBackpack className="w-5 h-5" />
-            一覧
+            プロジェクト一覧
           </button>
           <div className="w-px h-6 bg-gray-200" />
-          <h1 className="text-xl font-extrabold tracking-tight text-gray-800">{projectName || 'Project'}</h1>
+          <h1 className="text-xl font-bold tracking-tight text-gray-950">
+            {projectName || 'プロジェクト メイン画面'}
+          </h1>
         </div>
-        <div className="flex items-center gap-4">
-          <select 
-            className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white outline-none"
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as 'created_at' | 'deadline' | 'progress')}
-          >
-            <option value="created_at">作成順</option>
-            <option value="deadline">しめきり順</option>
-            <option value="progress">進捗順</option>
-          </select>
-          <button className="w-10 h-10 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-center">
-            <LuMenu className="w-6 h-6 text-gray-600" />
-          </button>
-        </div>
+        <button className="w-10 h-10 border rounded-lg hover:bg-gray-100 flex items-center justify-center transition duration-150">
+          <span className="text-xl">三</span>
+        </button>
       </header>
 
-      <div className="bg-white px-6 py-4 border-b shadow-sm z-20">
-        <div className="max-w-5xl mx-auto flex items-center gap-4">
-          <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Total Progress</span>
-          <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden border border-gray-50">
-            <div 
-              className="h-full bg-gradient-to-r from-emerald-400 to-blue-500 transition-all duration-1000" 
-              style={{ width: `${totalProgress}%` }} 
-            />
-          </div>
-          <span className="text-sm font-black text-blue-600 w-10 text-right">{totalProgress}%</span>
+      <div className="flex-1 p-6 lg:p-10 overflow-y-auto">
+        <div className="bg-white p-8 rounded-2xl shadow-sm border h-full">
+            <h2 className="text-2xl font-black mb-6 text-gray-950">タスクツリー (準備中)</h2>
+            <p className="text-gray-600 leading-relaxed mb-4">ここにタスクのツリー表示などを実装します。</p>
+            <div className="h-40 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center text-gray-400">
+              タスクデータが入ります
+            </div>
         </div>
       </div>
-
-      <main className="flex-1 p-6 lg:p-10 overflow-y-auto bg-gradient-to-b from-white to-blue-50">
-        <div className="max-w-5xl mx-auto space-y-6 pb-24">
-          {tasks.map(parent => (
-            <div key={parent.id} className="bg-white border border-gray-100 rounded-2xl shadow-xl overflow-hidden hover:shadow-2xl transition-all duration-300">
-              <div 
-                className="flex items-center p-5 hover:bg-blue-50/30 transition cursor-pointer" 
-                onClick={() => navigate(`/project/${communityId}/task/${parent.id}`)}
-              >
-                <div className="flex-1 flex items-center gap-4">
-                  <span className={`text-xs font-bold px-3 py-1 rounded-full ${parent.priority === '大' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
-                    {parent.priority}
-                  </span>
-                  <span className="font-extrabold text-lg text-gray-800">{parent.name}</span>
-                </div>
-                <div className="flex items-center gap-6">
-                  <div className="w-32 h-2.5 bg-gray-100 rounded-full overflow-hidden border border-gray-50">
-                    <div className="h-full bg-gradient-to-r from-blue-500 to-green-400 transition-all duration-500" style={{ width: `${parent.progress}%` }} />
-                  </div>
-                  <span className="text-sm font-black text-blue-600 w-10">{parent.progress}%</span>
-                  <LuChevronRight className="text-gray-300 w-6 h-6" />
-                </div>
-              </div>
-
-              {parent.childTasks && parent.childTasks.length > 0 && (
-                <div className="bg-gray-50/50 border-t border-gray-100 divide-y divide-gray-100">
-                  {parent.childTasks.map(child => (
-                    <div 
-                      key={child.id} 
-                      className="flex items-center pl-14 pr-6 py-4 hover:bg-white transition cursor-pointer" 
-                      onClick={() => navigate(`/project/${communityId}/task/${child.id}`)}
-                    >
-                      <div className="flex-1 text-sm font-semibold text-gray-600">{child.name}</div>
-                      <div className="flex items-center gap-4">
-                        <span className="text-xs font-bold text-gray-400">{child.progress}%</span>
-                        <LuChevronRight size={18} className="text-gray-200" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-
-          <button 
-            onClick={handleCreateParentTask}
-            className="w-full py-5 border-2 border-dashed border-blue-200 rounded-2xl text-blue-500 font-bold hover:bg-blue-50 transition-all flex items-center justify-center gap-2 group"
-          >
-            <LuPlus className="group-hover:scale-125 transition-transform" />
-            新しいタスクを作成
-          </button>
-        </div>
-      </main>
-
-      <div className={`fixed z-50 transition-all duration-300 transform ${'inset-0 w-full h-full sm:inset-auto sm:bottom-28 sm:right-6 sm:w-[400px] sm:h-[650px] sm:rounded-3xl sm:shadow-2xl sm:border sm:border-gray-200 overflow-hidden'} ${isChatOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95 pointer-events-none'}`}>
+      
+      <div className={`fixed z-50 transition-all duration-300 transform ${
+        'inset-0 w-full h-full rounded-none origin-bottom' +
+        ' sm:inset-auto sm:bottom-28 sm:right-6 sm:w-[400px] sm:h-[600px] sm:rounded-2xl sm:shadow-2xl sm:border sm:border-gray-300 sm:origin-bottom-right '
+      } ${
+        isChatOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95 pointer-events-none'
+      }`}>
         {currentUserId && communityId && isChatOpen && (
           <Chat communityId={communityId} currentUserId={currentUserId} onClose={handleToggleChat} />
         )}
       </div>
 
-      <div className="fixed bottom-8 right-8 z-40">
+      <div className="fixed bottom-6 right-6 z-40">
         <button 
           onClick={handleToggleChat}
-          className={`relative flex items-center justify-center w-20 h-20 rounded-full shadow-2xl transition-all duration-200 active:scale-90 ${isChatOpen ? 'bg-gray-100 text-gray-600' : 'bg-gradient-to-r from-blue-600 to-green-400 text-white shadow-blue-500/40'}`}
+          className={`relative flex items-center justify-center w-20 h-20 rounded-full shadow-2xl border transition-all duration-200 active:scale-95 ${
+            isChatOpen ? 'bg-gray-200 hover:bg-gray-300 text-gray-800' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-900/40'
+          }`}
         >
-          {isChatOpen ? <LuX className="w-10 h-10" /> : (
+          {isChatOpen ? (
+            <LuX className="w-10 h-10" />
+          ) : (
             <>
               <LuMessageSquare className="w-10 h-10" />
               {hasUnread && (
-                <span className="absolute top-1 right-1 flex h-6 w-6">
+                <span className="absolute top-1 right-1 flex h-5 w-5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-6 w-6 bg-red-600 border-2 border-white shadow-sm"></span>
+                  <span className="relative inline-flex rounded-full h-5 w-5 bg-red-600 border border-white shadow-md"></span>
                 </span>
               )}
             </>

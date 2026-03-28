@@ -38,7 +38,7 @@ export const TaskDetail: React.FC = () => {
   const { communityId, taskId } = useParams<{ communityId: string; taskId: string }>();
   const navigate = useNavigate();
   
-  // ✨ 環境変数のみを参照し、ハードコードを削除
+  // ✨ 環境変数から取得するように変更
   const API_BASE = import.meta.env.VITE_API_BASE_URL;
   const token = localStorage.getItem('access_token');
 

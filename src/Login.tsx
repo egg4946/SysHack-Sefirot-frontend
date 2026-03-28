@@ -13,6 +13,7 @@ const Login: React.FC = () => {
     setError(null);
     setLoading(true);
     try {
+      // 環境変数からベースを取得し、authパスを生成
       const apiBase = import.meta.env.VITE_API_BASE_URL;
       
       // api.yamlの仕様に基づき、/api/v1/auth/signin を呼び出す
