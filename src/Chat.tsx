@@ -26,30 +26,42 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const fetchMessages = useCallback(async () => {
-    try {
-      const token = localStorage.getItem('access_token');
-      if (!token) return;
-
-      const res = await fetch(`${API_BASE}/chat/messages?community_id=${communityId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setMessages(data);
-      }
-    } catch (error) {
-      console.error('チャットの取得に失敗しました', error);
-    }
+  // 1. fetch 本体を useCallback で定義（依存関係を明確にする）
+  const getMessages = useCallback(async (token: string) => {
+    const res = await fetch(`${API_BASE}/chat/messages?community_id=${communityId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Fetch failed');
+    return res.json();
   }, [communityId]);
 
+  // 2. useEffect 内で安全に呼び出し
   useEffect(() => {
-    fetchMessages();
-    const intervalId = setInterval(() => {
-      fetchMessages();
-    }, 3000);
-    return () => clearInterval(intervalId);
-  }, [fetchMessages]);
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+
+    let isMounted = true;
+
+    const updateMessages = async () => {
+      try {
+        const data = await getMessages(token);
+        if (isMounted) {
+          setMessages(data);
+        }
+      } catch (error) {
+        console.error('チャット取得失敗:', error);
+      }
+    };
+
+    updateMessages(); // 初回読み込み
+    const intervalId = setInterval(updateMessages, 3000); // 3秒おき
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+    // getMessages を依存配列に含めることで警告を解消
+  }, [getMessages]); 
 
   useEffect(() => {
     scrollToBottom();
@@ -60,6 +72,7 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
     if (!inputText.trim()) return;
 
     const token = localStorage.getItem('access_token');
+    if (!token) return;
     const messageToSend = inputText;
     setInputText('');
 
@@ -77,12 +90,13 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
       });
 
       if (res.ok) {
-        await fetchMessages();
+        const data = await getMessages(token);
+        setMessages(data);
       } else {
         setInputText(messageToSend);
       }
     } catch (error) {
-      console.error('送信に失敗しました', error);
+      console.error('送信失敗:', error);
       setInputText(messageToSend);
     }
   };
@@ -93,9 +107,9 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
   };
 
   return (
-    <div className="flex flex-col h-full w-full border border-gray-300 rounded-none sm:rounded-2xl bg-white shadow-2xl overflow-hidden font-sans">
+    <div className="flex flex-col h-full w-full border border-gray-300 rounded-none sm:rounded-2xl bg-white shadow-2xl overflow-hidden font-sans text-gray-950">
       <div className="flex items-center justify-between p-4 bg-white border-b sticky top-0 z-10">
-        <h3 className="text-sm font-bold flex items-center gap-2 text-gray-950">
+        <h3 className="text-sm font-bold flex items-center gap-2">
           💬 全体チャット
         </h3>
         <div className="flex items-center gap-2">
