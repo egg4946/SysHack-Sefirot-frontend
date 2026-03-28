@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { LuArrowLeft, LuPlus, LuCircleCheck, LuCircle, LuTrash2 } from "react-icons/lu";
+import { LuPlus, LuCircleCheck, LuCircle, LuTrash2 } from "react-icons/lu";
+// ✨ 1. Headerコンポーネントをインポート
+import { Header } from './Header';
 
 interface UserCommunity { id: string; name: string; }
 
@@ -38,7 +40,6 @@ export const TaskDetail: React.FC = () => {
   const { communityId, taskId } = useParams<{ communityId: string; taskId: string }>();
   const navigate = useNavigate();
   
-  // ✨ 環境変数から取得するように変更
   const API_BASE = import.meta.env.VITE_API_BASE_URL;
   const token = localStorage.getItem('access_token');
 
@@ -77,7 +78,7 @@ export const TaskDetail: React.FC = () => {
 
   const handleDeleteTask = async () => {
     if (!task) return;
-    if (!window.confirm("このタスクを削除しますか？")) return;
+    if (!window.confirm("このタスクを本当に削除しますか？\n（子タスクがある場合は削除できません）")) return;
 
     try {
       const res = await fetch(`${API_BASE}/tasks/delete`, {
@@ -147,17 +148,26 @@ export const TaskDetail: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
-      <header className="flex items-center justify-between px-6 py-4 border-b bg-white shadow-md sticky top-0 z-30">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-blue-600 font-extrabold hover:text-blue-800 transition">
-          <LuArrowLeft className="w-5 h-5" /> 戻る
-        </button>
-        <h1 className="text-lg font-black text-gray-800 truncate px-4">{task.name}</h1>
-        <button onClick={handleDeleteTask} className="p-2 text-gray-400 hover:text-red-500 transition">
-          <LuTrash2 size={24} />
-        </button>
-      </header>
+      
+      {/* ✨ 2. ここを共通のHeaderコンポーネントに書き換え！ */}
+      <Header 
+        title={task.name} // タスクのタイトルを中央に表示
+        showBackButton={true} // 左側に「<」アイコンを表示
+        onBack={() => navigate(-1)} // 戻る処理（元の画面へ）
+        menuItems={[
+          { 
+            label: 'タスクを削除する', 
+            icon: <LuTrash2 />, 
+            isDanger: true, // 赤文字にする
+            onClick: handleDeleteTask 
+          }
+        ]} 
+      />
 
+      {/* メインのコンテンツ領域 */}
       <main className="p-6 max-w-3xl mx-auto space-y-8 pb-24">
+        
+        {/* 全体の進捗バー */}
         <div className="bg-white p-6 rounded-3xl shadow-xl border border-gray-100">
           <div className="flex items-center gap-4">
             <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Task Total</span>
@@ -171,6 +181,7 @@ export const TaskDetail: React.FC = () => {
           </div>
         </div>
 
+        {/* 参加ボタン or 自分の進捗スライダー */}
         {!isAssigned ? (
           <button onClick={handleJoinTask} className="w-full py-6 bg-gradient-to-r from-blue-600 to-green-400 text-white rounded-3xl font-black text-xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
             <LuPlus className="w-6 h-6" /> このタスクに参加して進捗を入力
@@ -181,10 +192,18 @@ export const TaskDetail: React.FC = () => {
               <span className="font-black text-xs uppercase tracking-widest text-blue-500">{myData?.display_name}'s Progress</span>
               <span className="text-4xl font-black text-blue-600">{myData?.progress}%</span>
             </div>
-            <input type="range" min="0" max="100" value={myData?.progress || 0} onChange={(e) => handleProgressChange(parseInt(e.target.value))} className="w-full h-3 bg-gray-100 rounded-full appearance-none cursor-pointer accent-blue-600 border" />
+            <input 
+              type="range" 
+              min="0" 
+              max="100" 
+              value={myData?.progress || 0} 
+              onChange={(e) => handleProgressChange(parseInt(e.target.value))} 
+              className="w-full h-3 bg-gray-100 rounded-full appearance-none cursor-pointer accent-blue-600 border" 
+            />
           </div>
         )}
 
+        {/* チェックリスト */}
         <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
           <div className="flex justify-between items-center mb-6 border-b pb-4">
             <h3 className="text-2xl font-black text-gray-800 tracking-tight">Checklist</h3>
