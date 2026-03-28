@@ -6,6 +6,7 @@ import Register from './Register';
 import SelectProject from './SelectProject';
 import { ProjectMain } from './ProjectMain'; 
 import { TaskDetail } from './TaskDetail'; // 1. インポートを追加
+import { MemberDetail } from './MemberDetail';
 
 const App: React.FC = () => {
   return (
@@ -20,6 +21,9 @@ const App: React.FC = () => {
         
         {/* 2. タスク詳細画面を追加 (taskIdをパラメータとして受け取る) */}
         <Route path="/project/:communityId/task/:taskId" element={<TaskDetail />} />
+        
+        {/* 3. メンバー詳細画面を追加 (userIdをパラメータとして受け取る) */}
+        <Route path="/project/:communityId/member/:userId" element={<MemberDetail />} />
         
         {/* 未定義のパスはログインへリダイレクト */}
         <Route path="*" element={<Navigate to="/login" replace />} />

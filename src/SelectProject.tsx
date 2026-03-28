@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom'; // ✨ 1. 画面遷移用のツールをインポート
+import { useNavigate } from 'react-router-dom';
+// ✨ 追加: Headerコンポーネントとアイコンをインポート
+import { Header } from './Header';
+import { LuLogOut } from 'react-icons/lu';
 
 // 環境変数の取得
 const API_BASE = import.meta.env.VITE_API_BASE_URL;
@@ -14,7 +17,7 @@ type Community = {
 };
 
 const SelectProject: React.FC = () => {
-  const navigate = useNavigate(); // ✨ 2. navigate関数を準備
+  const navigate = useNavigate();
 
   const [communities, setCommunities] = useState<Community[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -46,7 +49,6 @@ const SelectProject: React.FC = () => {
       }
       
       const data = await response.json();
-      // MeResponse schema に基づき user_communities をセット
       setCommunities(data.user_communities || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'データの取得に失敗しました');
@@ -103,108 +105,129 @@ const SelectProject: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-8">
-      <div className="max-w-6xl mx-auto">
-        {/* ヘッダー部分などそのまま */}
-        <div className="flex justify-between items-center mb-10">
-          <div>
-            <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">
-              Sefirot
-            </h1>
-            <p className="text-gray-400 mt-2">User: {DEFAULT_DISPLAY_NAME}</p>
-          </div>
-          <button 
-            className="bg-gray-800 px-5 py-2 rounded-full border border-gray-700 hover:bg-gray-700 transition"
-            onClick={() => void fetchMyData()}
-          >
-            再読み込み
-          </button>
-        </div>
+    // ✨ ここに注目！画面の一番外側を <div> ではなく空の <> で囲み、
+    // Header と メイン画面を縦に並べます。
+    <>
+      {/* ✨ Header は return の中の一番上に置く！ */}
+      <Header 
+        title="プロジェクト選択" 
+        menuItems={[
+          { 
+            label: 'ログアウト', 
+            icon: <LuLogOut />, 
+            isDanger: true, 
+            onClick: () => {
+              // ログアウト処理（トークン削除など）
+              localStorage.removeItem('access_token');
+              navigate('/login');
+            } 
+          }
+        ]} 
+      />
 
-        {error && (
-          <div className="mb-8 p-4 bg-red-900/20 border border-red-500/50 rounded-lg text-red-300">
-            {error}
-          </div>
-        )}
-
-        {/* 招待コード入力セクションそのまま */}
-        <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700 mb-12 flex items-center gap-4">
-          <input
-            type="text"
-            placeholder="招待コードを入力"
-            className="bg-gray-900 border border-gray-600 px-4 py-3 rounded-xl flex-grow focus:ring-2 focus:ring-blue-500 outline-none"
-            value={inviteCode}
-            onChange={(e) => setInviteCode(e.target.value)}
-          />
-          <button
-            className="bg-blue-600 hover:bg-blue-500 px-8 py-3 rounded-xl font-bold transition shadow-lg shadow-blue-900/20"
-            onClick={handleJoinProject}
-          >
-            参加する
-          </button>
-        </div>
-
-        {/* カードグリッド */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          <button
-            className="h-56 border-2 border-dashed border-gray-600 rounded-3xl flex flex-col items-center justify-center hover:bg-gray-800/50 hover:border-blue-500 transition-all group"
-            onClick={() => setShowModal(true)}
-          >
-            <div className="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center text-2xl group-hover:bg-blue-600 transition-colors">
-              ＋
+      <div className="min-h-screen bg-gray-900 text-white p-8">
+        <div className="max-w-6xl mx-auto">
+          {/* Sefirotロゴと再読み込みボタン */}
+          <div className="flex justify-between items-center mb-10">
+            <div>
+              <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">
+                Sefirot
+              </h1>
+              <p className="text-gray-400 mt-2">User: {DEFAULT_DISPLAY_NAME}</p>
             </div>
-            <span className="mt-4 font-bold text-gray-400 group-hover:text-white">新規作成</span>
-          </button>
-
-          {/* プロジェクト一覧カード */}
-          {communities.map((c) => (
-            <div 
-              key={c.id} 
-              className="h-56 bg-gray-800 border border-gray-700 rounded-3xl p-8 flex flex-col justify-between hover:border-blue-500/50 transition-colors cursor-pointer group"
-              onClick={() => navigate(`/project/${c.id}`)} // ✨ 3. クリックでメイン画面に遷移！
+            <button 
+              className="bg-gray-800 px-5 py-2 rounded-full border border-gray-700 hover:bg-gray-700 transition"
+              onClick={() => void fetchMyData()}
             >
-              <div>
-                <h3 className="text-2xl font-bold group-hover:text-blue-400 transition-colors truncate">{c.name}</h3>
-                <p className="text-gray-500 text-xs mt-2 font-mono uppercase tracking-tighter">Invite Code: {c.invite_code}</p>
-              </div>
-              <div className="flex justify-between items-center text-sm text-gray-400">
-                <span>メンバー: {c.member_count}名</span>
-                <span className="bg-gray-700 px-3 py-1 rounded-full text-[10px]">{new Date(c.created_at).toLocaleDateString()}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+              再読み込み
+            </button>
+          </div>
 
-      {/* 作成モーダルそのまま */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50">
-          <div className="bg-gray-100 text-gray-900 p-8 rounded-3xl w-full max-w-md">
-            <h2 className="text-3xl font-black mb-2">New Project</h2>
-            <p className="text-gray-500 text-sm mb-6">プロジェクト名を入力してください</p>
+          {error && (
+            <div className="mb-8 p-4 bg-red-900/20 border border-red-500/50 rounded-lg text-red-300">
+              {error}
+            </div>
+          )}
+
+          {/* 招待コード入力セクション */}
+          <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700 mb-12 flex items-center gap-4">
             <input
               type="text"
-              className="w-full border-2 border-gray-200 px-4 py-3 rounded-2xl mb-6 focus:border-blue-500 outline-none font-bold"
-              value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value)}
-              autoFocus
+              placeholder="招待コードを入力"
+              className="bg-gray-900 border border-gray-600 px-4 py-3 rounded-xl flex-grow focus:ring-2 focus:ring-blue-500 outline-none"
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value)}
             />
-            <div className="flex gap-4">
-              <button className="flex-1 py-4 font-bold text-gray-400 hover:bg-gray-200 rounded-2xl transition" onClick={() => setShowModal(false)}>
-                やめる
-              </button>
-              <button 
-                className="flex-1 py-4 font-bold bg-blue-600 text-white rounded-2xl hover:bg-blue-700 disabled:bg-gray-300 transition" 
-                onClick={handleCreateProject}
-                disabled={!newProjectName.trim()}
+            <button
+              className="bg-blue-600 hover:bg-blue-500 px-8 py-3 rounded-xl font-bold transition shadow-lg shadow-blue-900/20"
+              onClick={handleJoinProject}
+            >
+              参加する
+            </button>
+          </div>
+
+          {/* カードグリッド */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            <button
+              className="h-56 border-2 border-dashed border-gray-600 rounded-3xl flex flex-col items-center justify-center hover:bg-gray-800/50 hover:border-blue-500 transition-all group"
+              onClick={() => setShowModal(true)}
+            >
+              <div className="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center text-2xl group-hover:bg-blue-600 transition-colors">
+                ＋
+              </div>
+              <span className="mt-4 font-bold text-gray-400 group-hover:text-white">新規作成</span>
+            </button>
+
+            {/* プロジェクト一覧カード */}
+            {communities.map((c) => (
+              <div 
+                key={c.id} 
+                className="h-56 bg-gray-800 border border-gray-700 rounded-3xl p-8 flex flex-col justify-between hover:border-blue-500/50 transition-colors cursor-pointer group"
+                onClick={() => navigate(`/project/${c.id}`)}
               >
-                作成する
-              </button>
-            </div>
+                <div>
+                  <h3 className="text-2xl font-bold group-hover:text-blue-400 transition-colors truncate">{c.name}</h3>
+                  <p className="text-gray-500 text-xs mt-2 font-mono uppercase tracking-tighter">Invite Code: {c.invite_code}</p>
+                </div>
+                <div className="flex justify-between items-center text-sm text-gray-400">
+                  <span>メンバー: {c.member_count}名</span>
+                  <span className="bg-gray-700 px-3 py-1 rounded-full text-[10px]">{new Date(c.created_at).toLocaleDateString()}</span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      )}
-    </div>
+
+        {/* 作成モーダル */}
+        {showModal && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50">
+            <div className="bg-gray-100 text-gray-900 p-8 rounded-3xl w-full max-w-md">
+              <h2 className="text-3xl font-black mb-2">New Project</h2>
+              <p className="text-gray-500 text-sm mb-6">プロジェクト名を入力してください</p>
+              <input
+                type="text"
+                className="w-full border-2 border-gray-200 px-4 py-3 rounded-2xl mb-6 focus:border-blue-500 outline-none font-bold"
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                autoFocus
+              />
+              <div className="flex gap-4">
+                <button className="flex-1 py-4 font-bold text-gray-400 hover:bg-gray-200 rounded-2xl transition" onClick={() => setShowModal(false)}>
+                  やめる
+                </button>
+                <button 
+                  className="flex-1 py-4 font-bold bg-blue-600 text-white rounded-2xl hover:bg-blue-700 disabled:bg-gray-300 transition" 
+                  onClick={handleCreateProject}
+                  disabled={!newProjectName.trim()}
+                >
+                  作成する
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
   );
 };
 
