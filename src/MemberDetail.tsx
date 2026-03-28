@@ -188,4 +188,3 @@ export const MemberDetail: React.FC = () => {
     </div>
   );
 };
-
