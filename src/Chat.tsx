@@ -1,8 +1,8 @@
-// src/Chat.tsx (LINE風・閉じるボタン対応版)
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { LuX } from "react-icons/lu"; // アイコンを追加
+import { LuX } from "react-icons/lu";
 
-// バックエンドから返ってくるメッセージの型定義
+const API_BASE = import.meta.env.VITE_API_BASE_URL;
+
 interface ChatMessage {
   id: string;
   community_id: string;
@@ -14,7 +14,7 @@ interface ChatMessage {
 interface ChatProps {
   communityId: string;
   currentUserId: string;
-  onClose: () => void; // ✨ 閉じるボタンが押された時のコールバック
+  onClose: () => void;
 }
 
 export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose }) => {
@@ -26,53 +26,58 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // 関数をメモ化して無限ループを防ぐ (そのまま)
-  const fetchMessages = useCallback(async () => {
-    try {
-      const token = localStorage.getItem('access_token');
-      if (!token) return;
+  // 1. ✨ getMessages を useCallback でラップして実体を固定する
+  const getMessages = useCallback(async (token: string) => {
+    const res = await fetch(`${API_BASE}/chat/messages?community_id=${communityId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Fetch failed');
+    return res.json();
+  }, [communityId]); // communityId が変わった時だけ関数が再生成される
 
-      const res = await fetch(`http://localhost:8000/api/v1/chat/messages?community_id=${communityId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setMessages(data);
-      }
-    } catch (error) {
-      console.error('チャットの取得に失敗しました', error);
-    }
-  }, [communityId]);
-
-  // 初回読み込み ＆ 3秒ごとに最新を取得 (そのまま)
+  // 2. ✨ useEffect の依存配列に getMessages を含める
   useEffect(() => {
-    const initFetch = async () => {
-      await fetchMessages();
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+
+    let isMounted = true;
+
+    const updateMessages = async () => {
+      try {
+        const data = await getMessages(token);
+        if (isMounted) {
+          setMessages(data);
+        }
+      } catch (error) {
+        console.error('チャット取得失敗:', error);
+      }
     };
-    initFetch();
 
-    const intervalId = setInterval(() => {
-      fetchMessages();
-    }, 3000);
+    updateMessages();
+    const intervalId = setInterval(updateMessages, 3000);
 
-    return () => clearInterval(intervalId);
-  }, [fetchMessages]);
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+    // getMessages を入れることで「依存関係が足りない」警告を解消
+  }, [getMessages]); 
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  // 送信処理 (そのまま)
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
 
     const token = localStorage.getItem('access_token');
+    if (!token) return;
     const messageToSend = inputText;
-    setInputText(''); // すぐに入力欄を空にする
+    setInputText('');
 
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/chat/send`, {
+      const res = await fetch(`${API_BASE}/chat/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -85,13 +90,13 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
       });
 
       if (res.ok) {
-        await fetchMessages(); // 送信成功したら最新を取得し直す
+        const data = await getMessages(token);
+        setMessages(data);
       } else {
-        console.error('送信エラー');
-        setInputText(messageToSend); // 失敗したら戻す
+        setInputText(messageToSend);
       }
     } catch (error) {
-      console.error('送信に失敗しました', error);
+      console.error('送信失敗:', error);
       setInputText(messageToSend);
     }
   };
@@ -102,17 +107,13 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
   };
 
   return (
-    // ✨ LINE風デザイン：下地の色を薄い水色(bg-sky-50)、周りをはっきり囲う(border-gray-300)
-    <div className="flex flex-col h-full w-full border border-gray-300 rounded-none sm:rounded-2xl bg-white shadow-2xl overflow-hidden font-sans">
-      
-      {/* 1. ✨ チャットウィジェットのヘッダー（スマホ対応：ヘッダーに閉じるボタンを追加） */}
+    <div className="flex flex-col h-full w-full border border-gray-300 rounded-none sm:rounded-2xl bg-white shadow-2xl overflow-hidden font-sans text-gray-950">
       <div className="flex items-center justify-between p-4 bg-white border-b sticky top-0 z-10">
-        <h3 className="text-sm font-bold flex items-center gap-2 text-gray-950">
+        <h3 className="text-sm font-bold flex items-center gap-2">
           💬 全体チャット
         </h3>
         <div className="flex items-center gap-2">
             <span className="text-[10px] bg-green-100 text-green-700 px-2.5 py-1 rounded-full font-semibold">リアルタイム監視中</span>
-            {/* ✨ スマホ対応：ヘッダーの閉じるボタン */}
             <button 
                 onClick={onClose}
                 className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition active:scale-95"
@@ -122,7 +123,6 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
         </div>
       </div>
 
-      {/* 2. ✨ チャット履歴表示エリア：下地を薄い水色にする */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-sky-50">
         {messages.map((msg) => {
           const isMine = msg.user.id === currentUserId;
@@ -132,7 +132,6 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
                 {msg.user.display_name}
               </span>
               <div className={`flex items-end gap-1.5 ${isMine ? 'flex-row-reverse' : 'flex-row'}`}>
-                {/* ✨ LINE風：吹き出しの色（自分：薄緑 #DCF8C6、他人：白 white） */}
                 <div className={`px-4 py-2 rounded-xl max-w-[80%] shadow-sm ${
                   isMine ? 'bg-[#DCF8C6] text-gray-950 rounded-br-none' : 'bg-white text-gray-950 border border-gray-100 rounded-bl-none'
                 }`}>
@@ -148,7 +147,6 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 3. 入力エリア：白でスッキリさせる */}
       <form onSubmit={handleSend} className="p-3 bg-white border-t flex gap-2 rounded-b-lg">
         <input
           type="text"

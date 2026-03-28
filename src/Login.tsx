@@ -14,6 +14,8 @@ const Login: React.FC = () => {
     setLoading(true);
     try {
       const apiBase = import.meta.env.VITE_API_BASE_URL;
+      
+      // api.yamlの仕様に基づき、/api/v1/auth/signin を呼び出す
       const res = await fetch(`${apiBase}/auth/signin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -26,18 +28,15 @@ const Login: React.FC = () => {
         return;
       }
 
-      // --- 修正ポイント：レスポンスからトークンを取り出して保存する ---
-      const data = await res.json(); // OpenAPIの AuthResponse 形式を期待
+      const data = await res.json();
       if (data.access_token) {
         localStorage.setItem('access_token', data.access_token);
-        // 必要に応じてリフレッシュトークンも保存
         if (data.refresh_token) {
           localStorage.setItem('refresh_token', data.refresh_token);
         }
       } else {
         throw new Error('トークンがレスポンスに含まれていません');
       }
-      // ---------------------------------------------------------
 
       navigate('/select-project');
     } catch (err) {
