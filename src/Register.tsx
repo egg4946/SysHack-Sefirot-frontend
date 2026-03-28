@@ -20,6 +20,7 @@ const Register: React.FC = () => {
     setLoading(true);
     try {
       const apiBase = import.meta.env.VITE_API_BASE_URL;
+
       const res = await fetch(`${apiBase}/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -36,7 +37,7 @@ const Register: React.FC = () => {
         return;
       }
       navigate('/login');
-    } catch{
+    } catch {
       setError('通信エラーが発生しました');
     } finally {
       setLoading(false);
