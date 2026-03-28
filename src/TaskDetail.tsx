@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LuArrowLeft, LuPlus, LuCircleCheck, LuCircle, LuTrash2 } from "react-icons/lu";
 
-// --- 型定義 ---
 interface UserCommunity { id: string; name: string; }
 
 interface UserData {
@@ -56,7 +55,6 @@ export const TaskDetail: React.FC = () => {
       ]);
 
       if (meRes.ok) {
-        // ✨ Promiseの解決と型アサーションを修正
         const meData = (await meRes.json()) as UserData;
         setCurrentUserId(meData.user_data.id);
       }
@@ -77,19 +75,9 @@ export const TaskDetail: React.FC = () => {
     fetchTaskDetail();
   }, [fetchTaskDetail]);
 
-// タスク削除機能
   const handleDeleteTask = async () => {
     if (!task) return;
-
-    // 子タスクがあるか確認
-    // 注: task.childTasks プロパティがあるか、またはAPIの仕様に基づき判断
-    const hasChildren = task.parent_task_id === null && task.checklists?.length > 0; // 簡易判定。本来は子タスク一覧の有無で判断
-    
-    const message = hasChildren 
-      ? "このタスクを削除しますか？\n注意：関連するすべての子タスクも削除されます。" 
-      : "このタスクを削除しますか？";
-
-    if (!window.confirm(message)) return;
+    if (!window.confirm("このタスクを削除しますか？")) return;
 
     try {
       const res = await fetch(`${API_BASE}/tasks/delete`, {
@@ -102,14 +90,12 @@ export const TaskDetail: React.FC = () => {
       });
 
       if (res.ok) {
-        // 削除成功したらプロジェクトメイン画面に戻る
         navigate(`/project/${communityId}`);
       } else {
         const errorData = await res.json().catch(() => ({}));
         alert(`削除に失敗しました: ${errorData.detail || 'サーバーエラー'}`);
       }
-    } catch (e) {
-      console.error("削除リクエスト中にエラーが発生しました", e);
+    } catch {
       alert("通信エラーが発生しました。");
     }
   };
@@ -172,7 +158,6 @@ export const TaskDetail: React.FC = () => {
       </header>
 
       <main className="p-6 max-w-3xl mx-auto space-y-8 pb-24">
-        {/* ✨ タスク全体の進捗（常に表示・メイン画面風UI） */}
         <div className="bg-white p-6 rounded-3xl shadow-xl border border-gray-100">
           <div className="flex items-center gap-4">
             <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Task Total</span>
@@ -197,24 +182,6 @@ export const TaskDetail: React.FC = () => {
               <span className="text-4xl font-black text-blue-600">{myData?.progress}%</span>
             </div>
             <input type="range" min="0" max="100" value={myData?.progress || 0} onChange={(e) => handleProgressChange(parseInt(e.target.value))} className="w-full h-3 bg-gray-100 rounded-full appearance-none cursor-pointer accent-blue-600 border" />
-            <p className="text-xs text-gray-400 mt-4 text-center font-bold tracking-tight">※あなたの入力がタスク全体の進捗に反映されます</p>
-          </div>
-        )}
-
-        {task.assignees.filter(a => a.id !== currentUserId).length > 0 && (
-          <div className="space-y-4">
-            <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-4">Team Progress</h3>
-            <div className="space-y-3">
-              {task.assignees.filter(a => a.id !== currentUserId).map(a => (
-                <div key={a.id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
-                  <span className="flex-1 font-bold text-gray-700">{a.display_name}</span>
-                  <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-400" style={{ width: `${a.progress}%` }} />
-                  </div>
-                  <span className="text-sm font-black text-blue-600 w-8">{a.progress}%</span>
-                </div>
-              ))}
-            </div>
           </div>
         )}
 

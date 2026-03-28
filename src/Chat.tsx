@@ -33,7 +33,7 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
     });
     if (!res.ok) throw new Error('Fetch failed');
     return res.json();
-  }, [communityId]);
+  }, [communityId]); // communityId が変わった時だけ関数が再生成される
 
   // 2. useEffect 内で安全に呼び出し
   useEffect(() => {

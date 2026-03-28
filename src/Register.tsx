@@ -20,7 +20,8 @@ const Register: React.FC = () => {
     setLoading(true);
     try {
       const apiBase = import.meta.env.VITE_API_BASE_URL;
-
+      
+      // api.yamlの仕様に基づき、/api/v1/auth/signup を呼び出す
       const res = await fetch(`${apiBase}/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
