@@ -49,6 +49,9 @@ export const TaskDetail: React.FC = () => {
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
+  const [localProgress, setLocalProgress] = useState<number>(0);
+  const [isDragging, setIsDragging] = useState(false);
+
   const [newChildTaskName, setNewChildTaskName] = useState('');
   const [isCreatingChild, setIsCreatingChild] = useState(false);
 
@@ -87,6 +90,15 @@ export const TaskDetail: React.FC = () => {
     fetchTaskDetail();
   }, [fetchTaskDetail]);
 
+  useEffect(() => {
+    if (!isDragging && task) {
+      const myData = task.assignees.find(a => a.id === currentUserId);
+      if (myData) {
+        setLocalProgress(myData.progress);
+      }
+    }
+  }, [task, currentUserId, isDragging]);
+
   const handleDeleteTask = async () => {
     if (!task) return;
     if (!window.confirm("このタスクを本当に削除しますか？\n（子タスクがある場合は削除できません）")) return;
@@ -113,13 +125,30 @@ export const TaskDetail: React.FC = () => {
     fetchTaskDetail();
   };
 
+  // ✨ ここを大改修！オプティミスティック更新を導入
   const handleProgressChange = async (value: number) => {
-    await fetch(`${API_BASE}/tasks/progress`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ task_id: taskId, progress: value })
-    });
-    fetchTaskDetail();
+    // 1. サーバーの応答を待たずに、画面のデータ（task）を直接新しい数値に書き換える！
+    // これにより、指を離した瞬間に古いデータに巻き戻るのを防ぎます。
+    if (task) {
+      const updatedAssignees = task.assignees.map(a => 
+        a.id === currentUserId ? { ...a, progress: value } : a
+      );
+      setTask({ ...task, assignees: updatedAssignees });
+    }
+
+    try {
+      // 2. その裏でこっそりサーバーに最新の数値を送信する
+      await fetch(`${API_BASE}/tasks/progress`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ task_id: taskId, progress: value })
+      });
+      
+      // 3. 送信が成功したら、念のため最新のデータを再取得（全体の平均進捗などを正確に合わせるため）
+      fetchTaskDetail(); 
+    } catch (e) {
+      console.error("進捗の保存に失敗しました", e);
+    }
   };
 
   const handleAddChecklist = async () => {
@@ -239,7 +268,6 @@ export const TaskDetail: React.FC = () => {
 
       <main className="p-4 sm:p-6 max-w-3xl mx-auto space-y-6 sm:space-y-8 pb-24">
         
-        {/* 基本情報とステータス */}
         <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
           <div className="flex-1">
             <h2 className="text-2xl font-black text-gray-900 mb-2">{task.name}</h2>
@@ -282,9 +310,6 @@ export const TaskDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* =========================================
-            ✨ 追加: 担当メンバー全員の進捗一覧リスト
-            ========================================= */}
         <section className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
           <div className="flex items-center gap-2 mb-6 border-b pb-4">
             <LuUsers className="w-6 h-6 text-blue-500" />
@@ -295,15 +320,12 @@ export const TaskDetail: React.FC = () => {
             {task.assignees.length > 0 ? (
               task.assignees.map(assignee => (
                 <div key={assignee.id} className="flex items-center gap-4 bg-gray-50/50 p-4 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-sm transition">
-                  {/* ✨ 名前をクリックで個人詳細画面へ遷移！ */}
                   <button
                     onClick={() => navigate(`/project/${communityId}/member/${assignee.id}`)}
                     className="w-1/3 text-left font-extrabold text-sm sm:text-base text-gray-700 hover:text-blue-600 hover:underline truncate transition"
                   >
                     {assignee.display_name}
                   </button>
-                  
-                  {/* リードオンリーの進捗バー */}
                   <div className="flex-1 flex items-center gap-3">
                     <div className="flex-1 h-2.5 bg-gray-200 rounded-full overflow-hidden shadow-inner">
                       <div 
@@ -323,7 +345,6 @@ export const TaskDetail: React.FC = () => {
           </div>
         </section>
 
-        {/* 自分の進捗スライダー（インタラクティブ） */}
         {!isAssigned ? (
           <button onClick={handleJoinTask} className="w-full py-6 bg-gradient-to-r from-blue-600 to-green-400 text-white rounded-3xl font-black text-xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
             <LuPlus className="w-6 h-6" /> このタスクに参加して進捗を入力
@@ -331,26 +352,29 @@ export const TaskDetail: React.FC = () => {
         ) : (
           <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-blue-100">
             <div className="flex justify-between items-center mb-6">
-              {/* ✨ 自分の名前もタップでプロフィールに飛べるようにしました */}
               <button 
                 onClick={() => navigate(`/project/${communityId}/member/${currentUserId}`)}
                 className="font-black text-xs uppercase tracking-widest text-blue-500 hover:text-blue-700 hover:underline transition"
               >
                 {myData?.display_name}'s Progress
               </button>
-              <span className="text-4xl font-black text-blue-600">{myData?.progress}%</span>
+              <span className="text-4xl font-black text-blue-600">{localProgress}%</span>
             </div>
             <input 
               type="range" 
               min="0" max="100" 
-              value={myData?.progress || 0} 
-              onChange={(e) => handleProgressChange(parseInt(e.target.value))} 
+              value={localProgress} 
+              onPointerDown={() => setIsDragging(true)}
+              onChange={(e) => setLocalProgress(parseInt(e.target.value))}
+              onPointerUp={(e) => {
+                setIsDragging(false);
+                handleProgressChange(parseInt(e.currentTarget.value));
+              }}
               className="w-full h-3 bg-gray-100 rounded-full appearance-none cursor-pointer accent-blue-600 border" 
             />
           </div>
         )}
 
-        {/* チェックリスト */}
         <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
           <div className="flex justify-between items-center mb-6 border-b pb-4">
             <h3 className="text-2xl font-black text-gray-800 tracking-tight">Checklist</h3>
@@ -378,7 +402,6 @@ export const TaskDetail: React.FC = () => {
           </div>
         </section>
 
-        {/* 子タスク追加 */}
         {task.parent_task_id === null && (
           <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
@@ -408,7 +431,6 @@ export const TaskDetail: React.FC = () => {
 
       </main>
 
-      {/* 編集モーダル */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-[2rem] w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
