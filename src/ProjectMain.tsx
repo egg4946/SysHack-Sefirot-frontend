@@ -14,20 +14,20 @@ interface UserCommunity { id: string; name: string; invite_code: string; }
 interface UserData { user_data: { id: string; }; user_communities: UserCommunity[]; }
 
 interface CommunityMember {
-  user_id: string;
+  id: string; 
+  email: string;
   display_name: string;
-  role: string;
+  created_at: string;
 }
 
-// ✨ タスクの型定義（APIのレスポンスに合わせて柔軟に）
 interface Task {
   id: string;
   title?: string;
-  name?: string; // APIによってはnameで返ってくる場合のフォールバック
+  name?: string; 
   progress: number;
   status: string;
   parentId?: string | null;
-  parent_task_id?: string | null; // APIによってはスネークケースの場合
+  parent_task_id?: string | null; 
 }
 
 export const ProjectMain: React.FC = () => {
@@ -35,6 +35,8 @@ export const ProjectMain: React.FC = () => {
   const navigate = useNavigate();
 
   const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [myDisplayName, setMyDisplayName] = useState<string>(''); // ✨ 現在の自分の表示名を管理
+
   const [isLoading, setIsLoading] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
@@ -50,12 +52,31 @@ export const ProjectMain: React.FC = () => {
   const [members, setMembers] = useState<CommunityMember[]>([]);
   const [newName, setNewName] = useState('');
 
-  // ✨ タスク関連のState
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [isCreatingTask, setIsCreatingTask] = useState(false);
 
-  // ✨ タスク一覧を取得する関数
+  // ✨ メンバー一覧を取得し、自分の名前を探してStateに保存する関数
+  const fetchMembers = useCallback(async (userIdToFind: string) => {
+    if (!communityId) return;
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(`${API_BASE}/community/members?community_id=${communityId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data: CommunityMember[] = await res.json();
+        setMembers(data);
+        const me = data.find(m => m.id === userIdToFind);
+        if (me) {
+          setMyDisplayName(me.display_name);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [communityId]);
+
   const fetchTasks = useCallback(async () => {
     if (!communityId) return;
     try {
@@ -72,7 +93,6 @@ export const ProjectMain: React.FC = () => {
     }
   }, [communityId]);
 
-  // 初期データ取得
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
@@ -84,15 +104,18 @@ export const ProjectMain: React.FC = () => {
         });
         if (meRes.ok) {
           const meData: UserData = await meRes.json();
-          setCurrentUserId(meData.user_data.id);
+          const userId = meData.user_data.id;
+          setCurrentUserId(userId);
           
           const myCommunity = meData.user_communities.find((c: UserCommunity) => c.id === communityId);
           if (myCommunity) {
             setProjectName(myCommunity.name);
             setInviteCode(myCommunity.invite_code);
           }
+          
+          await fetchTasks();
+          await fetchMembers(userId); // ✨ 画面表示時に自分の名前を取得する
         }
-        await fetchTasks(); // タスクも同時に取得
       } catch (error) {
         console.error('データの取得に失敗しました', error);
       } finally {
@@ -100,9 +123,8 @@ export const ProjectMain: React.FC = () => {
       }
     };
     fetchInitialData();
-  }, [communityId, fetchTasks]);
+  }, [communityId, fetchTasks, fetchMembers]);
 
-  // チャットの新着確認（ポーリング）
   useEffect(() => {
     if (!communityId) return;
     const token = localStorage.getItem('access_token');
@@ -139,26 +161,18 @@ export const ProjectMain: React.FC = () => {
     return () => clearInterval(intervalId);
   }, [communityId, isChatOpen]);
 
-  const fetchMembers = async () => {
-    try {
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(`${API_BASE}/community/members?community_id=${communityId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setMembers(data);
-      }
-    } catch (e) {
-      console.error(e);
-    }
+  // ✨ 名前変更モーダルを開く処理（開いた時に今の名前をセットする）
+  const handleOpenNameModal = () => {
+    setNewName(myDisplayName);
+    setShowNameModal(true);
   };
 
+  // ✨ 名前を変更して保存する処理
   const handleChangeName = async () => {
     if (!newName.trim()) return;
     try {
       const token = localStorage.getItem('access_token');
-      const res = await fetch(`${API_BASE}/community/member/update`, {
+      const res = await fetch(`${API_BASE}/community/member/name`, {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',
@@ -170,12 +184,16 @@ export const ProjectMain: React.FC = () => {
       if (res.ok) {
         alert("表示名を変更しました！");
         setShowNameModal(false);
-        setNewName('');
+        // ✨ 更新成功後、もう一度データを引っ張ってきて画面を一瞬で書き換える
+        await fetchMembers(currentUserId);
+        await fetchTasks(); 
       } else {
-        alert("変更に失敗しました");
+        const errorData = await res.json().catch(() => ({}));
+        alert(`変更に失敗しました: ${errorData.detail || 'エラー'}`);
       }
     } catch (e) {
       console.error(e);
+      alert("通信エラーが発生しました");
     }
   };
 
@@ -192,7 +210,6 @@ export const ProjectMain: React.FC = () => {
     });
   }, []);
 
-  // ✨ 親タスクを新規作成する処理
   const handleCreateParentTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim() || isCreatingTask) return;
@@ -208,15 +225,15 @@ export const ProjectMain: React.FC = () => {
         },
         body: JSON.stringify({ 
           community_id: communityId, 
-          name: newTaskTitle,       // ✨ 'title' ではなく 'name' に修正
-          priority: '中',           // ✨ 必須項目である 'priority' を追加（デフォルトで '中'）
-          parent_task_id: null      // ✨ api.yaml に合わせて 'parent_id' を 'parent_task_id' に修正
+          name: newTaskTitle, 
+          priority: '中',
+          parent_task_id: null 
         })
       });
 
       if (res.ok) {
         setNewTaskTitle('');
-        await fetchTasks(); // 作成後にリストを再取得
+        await fetchTasks(); 
       } else {
         const errorData = await res.json().catch(() => ({}));
         alert(`タスクの作成に失敗しました: ${errorData.detail || '不正なリクエスト'}`);
@@ -231,24 +248,24 @@ export const ProjectMain: React.FC = () => {
 
   if (isLoading) return <div className="p-8 text-center text-gray-500 animate-pulse">読み込み中...</div>;
 
-  // ✨ タスクを親と子に分ける処理
   const parentTasks = tasks.filter(t => !t.parentId && !t.parent_task_id);
   
   return (
     <div className="relative flex flex-col h-screen bg-gray-50 text-gray-900 font-sans overflow-hidden">
       
+      {/* ✨ ヘッダーに「プロジェクト名（👤 今の表示名）」と出るように変更 */}
       <Header 
-        title={projectName || "Sefirot Project"} 
+        title={projectName ? `${projectName} （👤 ${myDisplayName}）` : "Sefirot Project"} 
         showBackButton={true}
         onBack={() => navigate('/select-project')}
         menuItems={[
           { 
             label: 'メンバー一覧', 
             icon: <LuUsers />, 
-            onClick: () => { fetchMembers(); setShowMemberModal(true); } 
+            onClick: () => { fetchMembers(currentUserId); setShowMemberModal(true); } 
           },
           { label: '招待コードを表示', icon: <LuUserPlus />, onClick: () => setShowInviteModal(true) },
-          { label: 'このプロジェクトでの表示名変更', icon: <LuPenLine />, onClick: () => setShowNameModal(true) },
+          { label: 'このプロジェクトでの表示名変更', icon: <LuPenLine />, onClick: handleOpenNameModal }, // ✨ 関数を置き換え
           { label: 'ログアウト', icon: <LuLogOut />, isDanger: true, onClick: () => { localStorage.removeItem('access_token'); navigate('/login'); } }
         ]} 
       />
@@ -256,7 +273,6 @@ export const ProjectMain: React.FC = () => {
       <div className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto pb-32">
         <div className="max-w-4xl mx-auto space-y-8">
           
-          {/* ✨ タスク新規作成フォーム */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
             <h2 className="text-xl font-black mb-4 text-gray-800">新しいタスクを追加</h2>
             <form onSubmit={handleCreateParentTask} className="flex gap-3">
@@ -278,7 +294,6 @@ export const ProjectMain: React.FC = () => {
             </form>
           </div>
 
-          {/* ✨ タスクツリー表示エリア */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
             <h2 className="text-xl font-black mb-6 text-gray-800 flex items-center justify-between">
               <span>タスク一覧</span>
@@ -295,12 +310,10 @@ export const ProjectMain: React.FC = () => {
                 </div>
               ) : (
                 parentTasks.map(parentTask => {
-                  // この親タスクに属する子タスクを抽出
                   const childTasks = tasks.filter(t => t.parentId === parentTask.id || t.parent_task_id === parentTask.id);
                   
                   return (
                     <div key={parentTask.id} className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
-                      {/* 🔽 親タスクの表示 */}
                       <div 
                         onClick={() => navigate(`/project/${communityId}/task/${parentTask.id}`)}
                         className="p-4 bg-white hover:bg-blue-50 cursor-pointer transition flex items-center gap-4 group"
@@ -322,7 +335,6 @@ export const ProjectMain: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* 🔽 子タスクの表示（存在する場合のみ） */}
                       {childTasks.length > 0 && (
                         <div className="p-3 bg-gray-50/50 border-t border-gray-200 space-y-2 pl-6 sm:pl-12">
                           {childTasks.map(childTask => (
@@ -360,7 +372,6 @@ export const ProjectMain: React.FC = () => {
         </div>
       </div>
       
-      {/* チャットUI */}
       <div className={`fixed z-40 transition-all duration-300 transform ${
         'inset-0 w-full h-full rounded-none origin-bottom' +
         ' sm:inset-auto sm:bottom-28 sm:right-6 sm:w-[400px] sm:h-[600px] sm:rounded-2xl sm:shadow-2xl sm:border sm:border-gray-300 sm:origin-bottom-right '
@@ -393,7 +404,6 @@ export const ProjectMain: React.FC = () => {
         </button>
       </div>
 
-      {/* 1. メンバー一覧モーダル */}
       {showMemberModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
@@ -404,13 +414,13 @@ export const ProjectMain: React.FC = () => {
             <div className="overflow-y-auto p-4 space-y-2 flex-1">
               {members.map(member => (
                 <div 
-                  key={member.user_id} 
-                  onClick={() => navigate(`/project/${communityId}/member/${member.user_id}`)}
+                  key={member.id}
+                  onClick={() => navigate(`/project/${communityId}/member/${member.id}`)}
                   className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:bg-blue-50 cursor-pointer border border-transparent hover:border-blue-200 transition group"
                 >
                   <div>
                     <p className="font-bold text-gray-900">{member.display_name}</p>
-                    <p className="text-xs text-gray-500 uppercase tracking-widest">{member.role}</p>
+                    <p className="text-xs text-gray-500">{member.email}</p>
                   </div>
                   <LuChevronRight className="text-gray-400 group-hover:text-blue-500" />
                 </div>
@@ -420,7 +430,6 @@ export const ProjectMain: React.FC = () => {
         </div>
       )}
 
-      {/* 2. 招待コードモーダル */}
       {showInviteModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl text-center">
@@ -439,7 +448,6 @@ export const ProjectMain: React.FC = () => {
         </div>
       )}
 
-      {/* 3. 表示名変更モーダル */}
       {showNameModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl">
@@ -455,7 +463,7 @@ export const ProjectMain: React.FC = () => {
             />
             <div className="flex gap-3">
               <button onClick={() => setShowNameModal(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200">キャンセル</button>
-              <button onClick={handleChangeName} disabled={!newName.trim()} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:bg-gray-300 transition">
+              <button onClick={handleChangeName} disabled={!newName.trim()} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:bg-gray-300 transition shadow-lg shadow-blue-500/30">
                 変更する
               </button>
             </div>

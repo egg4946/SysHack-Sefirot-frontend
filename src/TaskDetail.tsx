@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { LuPlus, LuCircleCheck, LuCircle, LuTrash2, LuFilePlus } from "react-icons/lu";
+import { 
+  LuPlus, LuCircleCheck, LuCircle, LuTrash2, LuFilePlus, LuPenLine, LuInfo, LuCalendarDays, LuAlignLeft, LuUsers
+} from "react-icons/lu";
 import { Header } from './Header';
 
 interface UserCommunity { id: string; name: string; }
@@ -30,6 +32,7 @@ interface Task {
   progress: number;
   priority: '大' | '中' | '小';
   status: '未着手' | '進行中' | '完了';
+  deadline: string | null;
   parent_task_id: string | null;
   assignees: Assignee[];
   checklists: ChecklistItem[];
@@ -46,9 +49,14 @@ export const TaskDetail: React.FC = () => {
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
-  // ✨ 子タスク作成用のState
   const [newChildTaskName, setNewChildTaskName] = useState('');
   const [isCreatingChild, setIsCreatingChild] = useState(false);
+
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editPriority, setEditPriority] = useState<'大' | '中' | '小'>('中');
+  const [editDeadline, setEditDeadline] = useState('');
 
   const fetchTaskDetail = useCallback(async () => {
     if (!communityId || !taskId) return;
@@ -86,19 +94,11 @@ export const TaskDetail: React.FC = () => {
     try {
       const res = await fetch(`${API_BASE}/tasks/delete`, {
         method: 'DELETE',
-        headers: { 
-          'Content-Type': 'application/json', 
-          'Authorization': `Bearer ${token}` 
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ task_id: taskId })
       });
-
-      if (res.ok) {
-        navigate(`/project/${communityId}`);
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        alert(`削除に失敗しました: ${errorData.detail || 'サーバーエラー'}`);
-      }
+      if (res.ok) navigate(`/project/${communityId}`);
+      else alert(`削除に失敗しました`);
     } catch {
       alert("通信エラーが発生しました。");
     }
@@ -142,36 +142,25 @@ export const TaskDetail: React.FC = () => {
     fetchTaskDetail();
   };
 
-  // ✨ 子タスクを作成する関数
   const handleCreateChildTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newChildTaskName.trim() || isCreatingChild) return;
-    
     setIsCreatingChild(true);
     try {
       const res = await fetch(`${API_BASE}/tasks/create`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` 
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ 
           community_id: communityId, 
           name: newChildTaskName,
           priority: '中',
-          parent_task_id: taskId // ✨ 今開いているタスクのIDを親として指定！
+          parent_task_id: taskId
         })
       });
-
       if (res.ok) {
-        setNewChildTaskName('');
         alert('子タスクを追加しました！');
-        // 子タスクができたらメイン画面に戻る（ツリーで確認するため）
         navigate(`/project/${communityId}`);
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        alert(`作成に失敗しました: ${errorData.detail || '不正なリクエスト'}`);
-      }
+      } else alert(`作成に失敗しました`);
     } catch (error) {
       console.error(error);
       alert("通信エラーが発生しました");
@@ -180,9 +169,57 @@ export const TaskDetail: React.FC = () => {
     }
   };
 
-  if (loading || !task) return (
-    <div className="flex items-center justify-center h-screen bg-gray-50 text-blue-600 font-black animate-pulse">LOADING...</div>
-  );
+  const handleStatusChange = async (newStatus: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/tasks/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ task_id: taskId, status: newStatus })
+      });
+      if (res.ok) fetchTaskDetail();
+      else alert('ステータスの更新に失敗しました');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleUpdateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editName.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE}/tasks/update`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ 
+          task_id: taskId, 
+          name: editName,
+          description: editDesc || null,
+          priority: editPriority,
+          deadline: editDeadline ? new Date(editDeadline).toISOString() : null
+        })
+      });
+      if (res.ok) {
+        setShowEditModal(false);
+        fetchTaskDetail();
+      } else {
+        alert('タスクの更新に失敗しました');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const openEditModal = () => {
+    if (task) {
+      setEditName(task.name);
+      setEditDesc(task.description || '');
+      setEditPriority(task.priority);
+      setEditDeadline(task.deadline ? new Date(task.deadline).toISOString().slice(0, 16) : '');
+      setShowEditModal(true);
+    }
+  };
+
+  if (loading || !task) return <div className="flex items-center justify-center h-screen bg-gray-50 text-blue-600 font-black animate-pulse">LOADING...</div>;
 
   const isAssigned = task.assignees.some(a => a.id === currentUserId);
   const myData = task.assignees.find(a => a.id === currentUserId);
@@ -195,30 +232,98 @@ export const TaskDetail: React.FC = () => {
         showBackButton={true}
         onBack={() => navigate(-1)}
         menuItems={[
-          { 
-            label: 'タスクを削除する', 
-            icon: <LuTrash2 />, 
-            isDanger: true,
-            onClick: handleDeleteTask 
-          }
+          { label: 'タスクを編集する', icon: <LuPenLine />, onClick: openEditModal },
+          { label: 'タスクを削除する', icon: <LuTrash2 />, isDanger: true, onClick: handleDeleteTask }
         ]} 
       />
 
-      <main className="p-6 max-w-3xl mx-auto space-y-8 pb-24">
+      <main className="p-4 sm:p-6 max-w-3xl mx-auto space-y-6 sm:space-y-8 pb-24">
         
-        <div className="bg-white p-6 rounded-3xl shadow-xl border border-gray-100">
-          <div className="flex items-center gap-4">
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Task Total</span>
-            <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden border border-gray-50">
-              <div 
-                className="h-full bg-gradient-to-r from-emerald-400 to-blue-500 transition-all duration-1000" 
-                style={{ width: `${task.progress}%` }} 
-              />
+        {/* 基本情報とステータス */}
+        <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+          <div className="flex-1">
+            <h2 className="text-2xl font-black text-gray-900 mb-2">{task.name}</h2>
+            <div className="flex flex-wrap items-center gap-3 mt-3">
+              <select 
+                value={task.status}
+                onChange={(e) => handleStatusChange(e.target.value)}
+                className={`px-3 py-1.5 rounded-xl text-sm font-black tracking-widest outline-none cursor-pointer border-2 transition ${
+                  task.status === '完了' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 focus:border-emerald-500' :
+                  task.status === '進行中' ? 'bg-orange-50 text-orange-700 border-orange-200 focus:border-orange-500' :
+                  'bg-gray-50 text-gray-600 border-gray-200 focus:border-gray-500'
+                }`}
+              >
+                <option value="未着手">未着手</option>
+                <option value="進行中">進行中</option>
+                <option value="完了">完了</option>
+              </select>
+
+              <span className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${
+                task.priority === '大' ? 'bg-red-50 text-red-600' : task.priority === '中' ? 'bg-yellow-50 text-yellow-700' : 'bg-blue-50 text-blue-600'
+              }`}>
+                <LuInfo className="w-3.5 h-3.5" /> 優先度: {task.priority}
+              </span>
+              {task.deadline && (
+                <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-gray-100 text-gray-600 flex items-center gap-1">
+                  <LuCalendarDays className="w-3.5 h-3.5" /> 期限: {new Date(task.deadline).toLocaleDateString()}
+                </span>
+              )}
             </div>
-            <span className="text-sm font-black text-blue-600 w-10 text-right">{task.progress}%</span>
+            {task.description && (
+              <div className="mt-4 p-4 bg-gray-50 rounded-2xl text-sm text-gray-700 flex gap-3">
+                <LuAlignLeft className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
+                <p className="whitespace-pre-wrap">{task.description}</p>
+              </div>
+            )}
+          </div>
+          <div className="w-full sm:w-32 flex flex-col items-center justify-center p-4 bg-blue-50/50 rounded-3xl border border-blue-100">
+             <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Total Progress</span>
+             <span className="text-3xl font-black text-blue-600">{task.progress}%</span>
           </div>
         </div>
 
+        {/* =========================================
+            ✨ 追加: 担当メンバー全員の進捗一覧リスト
+            ========================================= */}
+        <section className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
+          <div className="flex items-center gap-2 mb-6 border-b pb-4">
+            <LuUsers className="w-6 h-6 text-blue-500" />
+            <h3 className="text-xl font-black text-gray-800 tracking-tight">担当メンバー</h3>
+          </div>
+          
+          <div className="space-y-4">
+            {task.assignees.length > 0 ? (
+              task.assignees.map(assignee => (
+                <div key={assignee.id} className="flex items-center gap-4 bg-gray-50/50 p-4 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-sm transition">
+                  {/* ✨ 名前をクリックで個人詳細画面へ遷移！ */}
+                  <button
+                    onClick={() => navigate(`/project/${communityId}/member/${assignee.id}`)}
+                    className="w-1/3 text-left font-extrabold text-sm sm:text-base text-gray-700 hover:text-blue-600 hover:underline truncate transition"
+                  >
+                    {assignee.display_name}
+                  </button>
+                  
+                  {/* リードオンリーの進捗バー */}
+                  <div className="flex-1 flex items-center gap-3">
+                    <div className="flex-1 h-2.5 bg-gray-200 rounded-full overflow-hidden shadow-inner">
+                      <div 
+                        className={`h-full transition-all duration-1000 ${assignee.progress === 100 ? 'bg-emerald-400' : 'bg-blue-500'}`} 
+                        style={{ width: `${assignee.progress}%` }} 
+                      />
+                    </div>
+                    <span className={`text-xs font-black w-8 text-right ${assignee.progress === 100 ? 'text-emerald-500' : 'text-blue-600'}`}>
+                      {assignee.progress}%
+                    </span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-gray-400 font-bold text-center py-6">担当者はまだいません</p>
+            )}
+          </div>
+        </section>
+
+        {/* 自分の進捗スライダー（インタラクティブ） */}
         {!isAssigned ? (
           <button onClick={handleJoinTask} className="w-full py-6 bg-gradient-to-r from-blue-600 to-green-400 text-white rounded-3xl font-black text-xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
             <LuPlus className="w-6 h-6" /> このタスクに参加して進捗を入力
@@ -226,7 +331,13 @@ export const TaskDetail: React.FC = () => {
         ) : (
           <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-blue-100">
             <div className="flex justify-between items-center mb-6">
-              <span className="font-black text-xs uppercase tracking-widest text-blue-500">{myData?.display_name}'s Progress</span>
+              {/* ✨ 自分の名前もタップでプロフィールに飛べるようにしました */}
+              <button 
+                onClick={() => navigate(`/project/${communityId}/member/${currentUserId}`)}
+                className="font-black text-xs uppercase tracking-widest text-blue-500 hover:text-blue-700 hover:underline transition"
+              >
+                {myData?.display_name}'s Progress
+              </button>
               <span className="text-4xl font-black text-blue-600">{myData?.progress}%</span>
             </div>
             <input 
@@ -239,6 +350,7 @@ export const TaskDetail: React.FC = () => {
           </div>
         )}
 
+        {/* チェックリスト */}
         <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
           <div className="flex justify-between items-center mb-6 border-b pb-4">
             <h3 className="text-2xl font-black text-gray-800 tracking-tight">Checklist</h3>
@@ -266,13 +378,12 @@ export const TaskDetail: React.FC = () => {
           </div>
         </section>
 
-        {/* ✨ 親タスクの場合のみ、子タスク追加UIを表示 */}
+        {/* 子タスク追加 */}
         {task.parent_task_id === null && (
           <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
               <h3 className="text-xl font-black text-gray-800 tracking-tight flex items-center gap-2">
-                <LuFilePlus className="text-blue-500 w-6 h-6" />
-                子タスクを追加
+                <LuFilePlus className="text-blue-500 w-6 h-6" /> 子タスクを追加
               </h3>
             </div>
             <form onSubmit={handleCreateChildTask} className="flex gap-3">
@@ -292,13 +403,86 @@ export const TaskDetail: React.FC = () => {
                 <span className="hidden sm:inline">追加</span>
               </button>
             </form>
-            <p className="text-xs text-gray-400 mt-4 font-bold leading-relaxed">
-              ※子タスクを追加すると、この親タスクは「コンテナ化」され、進捗は配下の子タスクの平均値として自動計算されるようになります。
-            </p>
           </section>
         )}
 
       </main>
+
+      {/* 編集モーダル */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-[2rem] w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-8 py-6 border-b border-gray-100 bg-gray-50/50">
+              <h3 className="text-2xl font-black text-gray-800">タスクを編集</h3>
+            </div>
+            <form onSubmit={handleUpdateTask} className="p-8 overflow-y-auto flex-1 space-y-6">
+              
+              <div>
+                <label className="block text-sm font-bold text-gray-600 mb-2">タスク名 <span className="text-red-500">*</span></label>
+                <input 
+                  type="text" 
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-600 mb-2">優先度</label>
+                <div className="flex gap-4">
+                  {['大', '中', '小'].map(p => (
+                    <label key={p} className="flex-1 cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="priority" 
+                        value={p}
+                        checked={editPriority === p}
+                        onChange={(e) => setEditPriority(e.target.value as '大' | '中' | '小')}
+                        className="peer sr-only"
+                      />
+                      <div className="text-center py-3 rounded-xl border-2 font-bold transition peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-checked:text-blue-700 bg-white text-gray-500 border-gray-200 hover:bg-gray-50">
+                        {p}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-600 mb-2">期限 (しめきり)</label>
+                <input 
+                  type="datetime-local" 
+                  value={editDeadline}
+                  onChange={e => setEditDeadline(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-600 mb-2">説明・メモ</label>
+                <textarea 
+                  value={editDesc}
+                  onChange={e => setEditDesc(e.target.value)}
+                  placeholder="タスクの詳細やメモを記入..."
+                  rows={4}
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                />
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button type="button" onClick={() => setShowEditModal(false)} className="flex-1 py-4 bg-gray-100 text-gray-600 font-bold rounded-2xl hover:bg-gray-200 transition">
+                  キャンセル
+                </button>
+                <button type="submit" disabled={!editName.trim()} className="flex-1 py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 disabled:bg-gray-300 transition shadow-lg shadow-blue-500/30">
+                  保存する
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
