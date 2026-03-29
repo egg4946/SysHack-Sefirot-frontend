@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { LuX } from "react-icons/lu";
+import { LuX, LuSend } from "react-icons/lu";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
@@ -26,16 +26,14 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // 1. fetch 本体を useCallback で定義（依存関係を明確にする）
   const getMessages = useCallback(async (token: string) => {
     const res = await fetch(`${API_BASE}/chat/messages?community_id=${communityId}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!res.ok) throw new Error('Fetch failed');
     return res.json();
-  }, [communityId]); // communityId が変わった時だけ関数が再生成される
+  }, [communityId]);
 
-  // 2. useEffect 内で安全に呼び出し
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     if (!token) return;
@@ -53,16 +51,16 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
       }
     };
 
-    updateMessages(); // 初回読み込み
-    const intervalId = setInterval(updateMessages, 3000); // 3秒おき
+    updateMessages();
+    const intervalId = setInterval(updateMessages, 3000);
 
     return () => {
       isMounted = false;
       clearInterval(intervalId);
     };
-    // getMessages を依存配列に含めることで警告を解消
   }, [getMessages]); 
 
+  // メッセージが増えたら自動で一番下までスクロール
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -93,7 +91,7 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
         const data = await getMessages(token);
         setMessages(data);
       } else {
-        setInputText(messageToSend);
+        setInputText(messageToSend); // 失敗したらテキストボックスに戻す
       }
     } catch (error) {
       console.error('送信失敗:', error);
@@ -101,19 +99,39 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
     }
   };
 
-  const formatTime = (isoString: string) => {
+  // ✨ 日付と時間の両方を綺麗にフォーマットする関数
+  const formatDateTime = (isoString: string) => {
     const date = new Date(isoString);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // 今日の日付なら時間だけ、昨日以前なら日付＋時間を表示する工夫
+    const today = new Date();
+    const isToday = date.getDate() === today.getDate() && 
+                    date.getMonth() === today.getMonth() && 
+                    date.getFullYear() === today.getFullYear();
+    
+    if (isToday) {
+      return `今日 ${date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`;
+    } else {
+      return date.toLocaleString('ja-JP', { 
+        month: 'short', 
+        day: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      }); // 例：3月30日 05:23
+    }
   };
 
   return (
     <div className="flex flex-col h-full w-full border border-gray-300 rounded-none sm:rounded-2xl bg-white shadow-2xl overflow-hidden font-sans text-gray-950">
+      
+      {/* ヘッダー部分 */}
       <div className="flex items-center justify-between p-4 bg-white border-b sticky top-0 z-10">
         <h3 className="text-sm font-bold flex items-center gap-2">
           💬 全体チャット
         </h3>
         <div className="flex items-center gap-2">
-            <span className="text-[10px] bg-green-100 text-green-700 px-2.5 py-1 rounded-full font-semibold">リアルタイム監視中</span>
+            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full font-bold tracking-wider">
+              🟢 ONLINE
+            </span>
             <button 
                 onClick={onClose}
                 className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition active:scale-95"
@@ -123,46 +141,58 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-sky-50">
+      {/* タイムライン部分 */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-sky-50/50">
         {messages.map((msg) => {
           const isMine = msg.user.id === currentUserId;
           return (
             <div key={msg.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
-              <span className="text-[10px] text-gray-600 mb-1 px-1 font-medium">
-                {msg.user.display_name}
+              
+              {/* 送信者名（自分の場合は「あなた」と表示） */}
+              <span className="text-[10px] text-gray-500 mb-1 px-1 font-bold">
+                {isMine ? 'あなた' : msg.user.display_name}
               </span>
-              <div className={`flex items-end gap-1.5 ${isMine ? 'flex-row-reverse' : 'flex-row'}`}>
-                <div className={`px-4 py-2 rounded-xl max-w-[80%] shadow-sm ${
-                  isMine ? 'bg-[#DCF8C6] text-gray-950 rounded-br-none' : 'bg-white text-gray-950 border border-gray-100 rounded-bl-none'
+              
+              <div className={`flex items-end gap-2 ${isMine ? 'flex-row-reverse' : 'flex-row'}`}>
+                {/* ふきだし本体 */}
+                <div className={`px-4 py-2.5 rounded-[1.2rem] max-w-[85%] shadow-sm ${
+                  isMine 
+                    ? 'bg-[#DCF8C6] text-gray-950 rounded-br-sm' // LINE風の緑色
+                    : 'bg-white text-gray-950 border border-gray-100 rounded-bl-sm'
                 }`}>
                   <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{msg.content}</p>
                 </div>
-                <span className="text-[10px] text-gray-400 mb-1 font-mono">
-                  {formatTime(msg.created_at)}
+                
+                {/* ✨ 日付＋時間表示 */}
+                <span className="text-[9px] text-gray-400 mb-0.5 font-bold whitespace-nowrap">
+                  {formatDateTime(msg.created_at)}
                 </span>
               </div>
             </div>
           );
         })}
-        <div ref={messagesEndRef} />
+        {/* スクロール用ダミー要素 */}
+        <div ref={messagesEndRef} className="h-1" />
       </div>
 
-      <form onSubmit={handleSend} className="p-3 bg-white border-t flex gap-2 rounded-b-lg">
+      {/* 入力フォーム部分 */}
+      <form onSubmit={handleSend} className="p-3 bg-white border-t flex items-center gap-2">
         <input
           type="text"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           placeholder="メッセージを入力..."
-          className="flex-1 border rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-gray-50"
+          className="flex-1 border border-gray-200 rounded-full px-5 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-gray-50 transition"
         />
         <button
           type="submit"
           disabled={!inputText.trim()}
-          className="bg-blue-600 text-white rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-50 transition-opacity active:scale-95"
+          className="bg-blue-600 text-white rounded-full p-3 flex items-center justify-center disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-blue-700 transition active:scale-90 shadow-md shadow-blue-500/30"
         >
-          送信
+          <LuSend className="w-5 h-5 ml-1" /> {/* 送信アイコン */}
         </button>
       </form>
+
     </div>
   );
 };
