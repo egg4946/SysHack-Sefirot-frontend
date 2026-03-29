@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { LuPlus, LuCircleCheck, LuCircle, LuTrash2 } from "react-icons/lu";
-// ✨ 1. Headerコンポーネントをインポート
+import { LuPlus, LuCircleCheck, LuCircle, LuTrash2, LuFilePlus } from "react-icons/lu";
 import { Header } from './Header';
 
 interface UserCommunity { id: string; name: string; }
@@ -46,6 +45,10 @@ export const TaskDetail: React.FC = () => {
   const [task, setTask] = useState<Task | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [loading, setLoading] = useState(true);
+
+  // ✨ 子タスク作成用のState
+  const [newChildTaskName, setNewChildTaskName] = useState('');
+  const [isCreatingChild, setIsCreatingChild] = useState(false);
 
   const fetchTaskDetail = useCallback(async () => {
     if (!communityId || !taskId) return;
@@ -139,6 +142,44 @@ export const TaskDetail: React.FC = () => {
     fetchTaskDetail();
   };
 
+  // ✨ 子タスクを作成する関数
+  const handleCreateChildTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newChildTaskName.trim() || isCreatingChild) return;
+    
+    setIsCreatingChild(true);
+    try {
+      const res = await fetch(`${API_BASE}/tasks/create`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ 
+          community_id: communityId, 
+          name: newChildTaskName,
+          priority: '中',
+          parent_task_id: taskId // ✨ 今開いているタスクのIDを親として指定！
+        })
+      });
+
+      if (res.ok) {
+        setNewChildTaskName('');
+        alert('子タスクを追加しました！');
+        // 子タスクができたらメイン画面に戻る（ツリーで確認するため）
+        navigate(`/project/${communityId}`);
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        alert(`作成に失敗しました: ${errorData.detail || '不正なリクエスト'}`);
+      }
+    } catch (error) {
+      console.error(error);
+      alert("通信エラーが発生しました");
+    } finally {
+      setIsCreatingChild(false);
+    }
+  };
+
   if (loading || !task) return (
     <div className="flex items-center justify-center h-screen bg-gray-50 text-blue-600 font-black animate-pulse">LOADING...</div>
   );
@@ -149,25 +190,22 @@ export const TaskDetail: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
       
-      {/* ✨ 2. ここを共通のHeaderコンポーネントに書き換え！ */}
       <Header 
-        title={task.name} // タスクのタイトルを中央に表示
-        showBackButton={true} // 左側に「<」アイコンを表示
-        onBack={() => navigate(-1)} // 戻る処理（元の画面へ）
+        title={task.name}
+        showBackButton={true}
+        onBack={() => navigate(-1)}
         menuItems={[
           { 
             label: 'タスクを削除する', 
             icon: <LuTrash2 />, 
-            isDanger: true, // 赤文字にする
+            isDanger: true,
             onClick: handleDeleteTask 
           }
         ]} 
       />
 
-      {/* メインのコンテンツ領域 */}
       <main className="p-6 max-w-3xl mx-auto space-y-8 pb-24">
         
-        {/* 全体の進捗バー */}
         <div className="bg-white p-6 rounded-3xl shadow-xl border border-gray-100">
           <div className="flex items-center gap-4">
             <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Task Total</span>
@@ -181,7 +219,6 @@ export const TaskDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* 参加ボタン or 自分の進捗スライダー */}
         {!isAssigned ? (
           <button onClick={handleJoinTask} className="w-full py-6 bg-gradient-to-r from-blue-600 to-green-400 text-white rounded-3xl font-black text-xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
             <LuPlus className="w-6 h-6" /> このタスクに参加して進捗を入力
@@ -194,8 +231,7 @@ export const TaskDetail: React.FC = () => {
             </div>
             <input 
               type="range" 
-              min="0" 
-              max="100" 
+              min="0" max="100" 
               value={myData?.progress || 0} 
               onChange={(e) => handleProgressChange(parseInt(e.target.value))} 
               className="w-full h-3 bg-gray-100 rounded-full appearance-none cursor-pointer accent-blue-600 border" 
@@ -203,7 +239,6 @@ export const TaskDetail: React.FC = () => {
           </div>
         )}
 
-        {/* チェックリスト */}
         <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
           <div className="flex justify-between items-center mb-6 border-b pb-4">
             <h3 className="text-2xl font-black text-gray-800 tracking-tight">Checklist</h3>
@@ -230,6 +265,39 @@ export const TaskDetail: React.FC = () => {
             )}
           </div>
         </section>
+
+        {/* ✨ 親タスクの場合のみ、子タスク追加UIを表示 */}
+        {task.parent_task_id === null && (
+          <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
+            <div className="flex justify-between items-center mb-6 border-b pb-4">
+              <h3 className="text-xl font-black text-gray-800 tracking-tight flex items-center gap-2">
+                <LuFilePlus className="text-blue-500 w-6 h-6" />
+                子タスクを追加
+              </h3>
+            </div>
+            <form onSubmit={handleCreateChildTask} className="flex gap-3">
+              <input
+                type="text"
+                placeholder="子タスク名を入力..."
+                value={newChildTaskName}
+                onChange={(e) => setNewChildTaskName(e.target.value)}
+                className="flex-1 bg-gray-50 border border-gray-200 rounded-2xl px-5 py-3 font-bold focus:ring-2 focus:ring-blue-500 outline-none transition"
+              />
+              <button 
+                type="submit" 
+                disabled={!newChildTaskName.trim() || isCreatingChild}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition shadow-md"
+              >
+                <LuPlus className="w-5 h-5" />
+                <span className="hidden sm:inline">追加</span>
+              </button>
+            </form>
+            <p className="text-xs text-gray-400 mt-4 font-bold leading-relaxed">
+              ※子タスクを追加すると、この親タスクは「コンテナ化」され、進捗は配下の子タスクの平均値として自動計算されるようになります。
+            </p>
+          </section>
+        )}
+
       </main>
     </div>
   );
