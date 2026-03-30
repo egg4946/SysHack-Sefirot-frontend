@@ -69,35 +69,36 @@ export const TaskDetail: React.FC = () => {
         fetch(`${API_BASE}/tasks?community_id=${communityId}`, { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
 
+      let fetchedUserId = currentUserId;
+
       if (meRes.ok) {
         const meData = (await meRes.json()) as UserData;
-        setCurrentUserId(meData.user_data.id);
+        fetchedUserId = meData.user_data.id;
+        setCurrentUserId(fetchedUserId);
       }
 
       if (taskRes.ok) {
         const data = (await taskRes.json()) as Task[];
         const currentTask = data.find((t: Task) => t.id === taskId);
-        if (currentTask) setTask(currentTask);
+        if (currentTask) {
+          setTask(currentTask);
+          // ドラッグ中でない場合のみ、サーバーからの値をローカルに反映
+          if (!isDragging) {
+            const myData = currentTask.assignees.find(a => a.id === fetchedUserId);
+            if (myData) setLocalProgress(myData.progress);
+          }
+        }
       }
     } catch (e) {
       console.error("データの取得に失敗しました", e);
     } finally {
       setLoading(false);
     }
-  }, [taskId, communityId, API_BASE, token]);
+  }, [taskId, communityId, API_BASE, token, isDragging, currentUserId]);
 
   useEffect(() => {
     fetchTaskDetail();
   }, [fetchTaskDetail]);
-
-  useEffect(() => {
-    if (!isDragging && task) {
-      const myData = task.assignees.find(a => a.id === currentUserId);
-      if (myData) {
-        setLocalProgress(myData.progress);
-      }
-    }
-  }, [task, currentUserId, isDragging]);
 
   const handleDeleteTask = async () => {
     if (!task) return;
@@ -125,26 +126,15 @@ export const TaskDetail: React.FC = () => {
     fetchTaskDetail();
   };
 
-  // ✨ ここを大改修！オプティミスティック更新を導入
-  const handleProgressChange = async (value: number) => {
-    // 1. サーバーの応答を待たずに、画面のデータ（task）を直接新しい数値に書き換える！
-    // これにより、指を離した瞬間に古いデータに巻き戻るのを防ぎます。
-    if (task) {
-      const updatedAssignees = task.assignees.map(a => 
-        a.id === currentUserId ? { ...a, progress: value } : a
-      );
-      setTask({ ...task, assignees: updatedAssignees });
-    }
-
+  // 進捗をサーバーに保存
+  const handleProgressConfirm = async (value: number) => {
+    setIsDragging(false);
     try {
-      // 2. その裏でこっそりサーバーに最新の数値を送信する
       await fetch(`${API_BASE}/tasks/progress`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ task_id: taskId, progress: value })
       });
-      
-      // 3. 送信が成功したら、念のため最新のデータを再取得（全体の平均進捗などを正確に合わせるため）
       fetchTaskDetail(); 
     } catch (e) {
       console.error("進捗の保存に失敗しました", e);
@@ -364,12 +354,11 @@ export const TaskDetail: React.FC = () => {
               type="range" 
               min="0" max="100" 
               value={localProgress} 
-              onPointerDown={() => setIsDragging(true)}
+              onMouseDown={() => setIsDragging(true)}
+              onTouchStart={() => setIsDragging(true)}
               onChange={(e) => setLocalProgress(parseInt(e.target.value))}
-              onPointerUp={(e) => {
-                setIsDragging(false);
-                handleProgressChange(parseInt(e.currentTarget.value));
-              }}
+              onMouseUp={(e) => handleProgressConfirm(parseInt(e.currentTarget.value))}
+              onTouchEnd={(e) => handleProgressConfirm(parseInt(e.currentTarget.value))}
               className="w-full h-3 bg-gray-100 rounded-full appearance-none cursor-pointer accent-blue-600 border" 
             />
           </div>
