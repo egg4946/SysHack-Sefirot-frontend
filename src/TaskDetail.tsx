@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   LuPlus, LuCircleCheck, LuCircle, LuTrash2, LuFilePlus, LuPenLine, LuInfo, LuCalendarDays, LuAlignLeft, LuUsers, LuUserMinus,
-  LuFolderOpen
+  LuFolderOpen, LuUserPlus, LuX, LuChevronRight // ✨ アイコンを追加
 } from "react-icons/lu";
 import { Header } from './Header';
 
@@ -23,6 +23,13 @@ interface ChecklistItem {
   id: string;
   content: string;
   is_completed: boolean;
+}
+
+// ✨ メンバー情報の型定義
+interface CommunityMember {
+  id: string; 
+  email: string;
+  display_name: string;
 }
 
 interface Task {
@@ -48,6 +55,7 @@ export const TaskDetail: React.FC = () => {
 
   const [task, setTask] = useState<Task | null>(null);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
+  const [members, setMembers] = useState<CommunityMember[]>([]); // ✨ プロジェクトの全メンバーを保持
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
@@ -58,6 +66,7 @@ export const TaskDetail: React.FC = () => {
   const [isCreatingChild, setIsCreatingChild] = useState(false);
 
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false); // ✨ アサイン用モーダルの開閉状態
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editPriority, setEditPriority] = useState<'大' | '中' | '小'>('中');
@@ -66,9 +75,11 @@ export const TaskDetail: React.FC = () => {
   const fetchTaskDetail = useCallback(async () => {
     if (!communityId || !taskId) return;
     try {
-      const [meRes, taskRes] = await Promise.all([
+      // ✨ 自分の情報、タスク一覧、コミュニティメンバーを並列で取得
+      const [meRes, tasksRes, membersRes] = await Promise.all([
         fetch(`${API_BASE}/me`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${API_BASE}/tasks?community_id=${communityId}`, { headers: { 'Authorization': `Bearer ${token}` } })
+        fetch(`${API_BASE}/tasks?community_id=${communityId}`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_BASE}/community/members?community_id=${communityId}`, { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
 
       if (meRes.ok) {
@@ -76,11 +87,16 @@ export const TaskDetail: React.FC = () => {
         setCurrentUserId(meData.user_data.id);
       }
 
-      if (taskRes.ok) {
-        const data = (await taskRes.json()) as Task[];
+      if (tasksRes.ok) {
+        const data = (await tasksRes.json()) as Task[];
         setAllTasks(data);
         const currentTask = data.find((t: Task) => t.id === taskId);
         if (currentTask) setTask(currentTask);
+      }
+
+      if (membersRes.ok) {
+        const membersData = await membersRes.json();
+        setMembers(membersData);
       }
     } catch (e) {
       console.error("データの取得に失敗しました", e);
@@ -126,6 +142,25 @@ export const TaskDetail: React.FC = () => {
       body: JSON.stringify({ task_id: taskId, user_id: currentUserId })
     });
     fetchTaskDetail();
+  };
+
+  // ✨ 【新規】任意のメンバーをアサインする処理
+  const handleAssignMember = async (userId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/tasks/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ task_id: taskId, user_id: userId })
+      });
+      if (res.ok) {
+        setShowAssignModal(false);
+        fetchTaskDetail();
+      } else {
+        alert("アサインに失敗しました");
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleLeaveTask = async () => {
@@ -273,8 +308,10 @@ export const TaskDetail: React.FC = () => {
   const isAssigned = task.assignees.some(a => a.id === currentUserId);
   const myData = task.assignees.find(a => a.id === currentUserId);
 
-  // 子タスクを抽出
   const childTasks = allTasks.filter(t => t.parent_task_id === taskId);
+
+  // ✨ アサインされていないメンバーだけをフィルタリング
+  const unassignedMembers = members.filter(m => !task.assignees.some(a => a.id === m.id));
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
@@ -285,6 +322,8 @@ export const TaskDetail: React.FC = () => {
         onBack={() => navigate(-1)}
         menuItems={[
           { label: 'タスクを編集する', icon: <LuPenLine />, onClick: openEditModal },
+          // ✨ ハンバーガーメニューに「割り振る」ボタンを追加
+          { label: 'メンバーを割り振る', icon: <LuUserPlus />, onClick: () => setShowAssignModal(true) },
           ...(isAssigned ? [{ label: 'このタスクから退出する', icon: <LuUserMinus />, isDanger: true, onClick: handleLeaveTask }] : []),
           { label: 'タスクを削除する', icon: <LuTrash2 />, isDanger: true, onClick: handleDeleteTask }
         ]} 
@@ -369,7 +408,6 @@ export const TaskDetail: React.FC = () => {
           </div>
         </section>
 
-        {/* ✨ 修正ポイント: 親タスクであり、かつ子タスクが「1つ以上ある場合のみ」このセクションを表示 */}
         {task.parent_task_id === null && childTasks.length > 0 && (
           <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
             <div className="flex items-center gap-2 mb-6 border-b pb-4">
@@ -482,13 +520,50 @@ export const TaskDetail: React.FC = () => {
 
       </main>
 
+      {/* ✨ メンバーアサイン用モーダル */}
+      {showAssignModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h3 className="text-xl font-black">メンバーを割り振る</h3>
+              <button onClick={() => setShowAssignModal(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200">
+                <LuX />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-4 space-y-2 flex-1 text-left">
+              {unassignedMembers.length > 0 ? (
+                unassignedMembers.map(member => (
+                  <div 
+                    key={member.id}
+                    onClick={() => handleAssignMember(member.id)}
+                    className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:bg-blue-50 cursor-pointer border border-transparent hover:border-blue-200 transition group"
+                  >
+                    <div>
+                      <p className="font-bold text-gray-900">{member.display_name}</p>
+                      <p className="text-xs text-gray-500">{member.email}</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity font-bold text-sm">
+                      追加する <LuChevronRight />
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-10">
+                  <p className="text-gray-400 font-bold">全員アサイン済みです</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showEditModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-[2rem] w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="px-8 py-6 border-b border-gray-100 bg-gray-50/50">
               <h3 className="text-2xl font-black text-gray-800">タスクを編集</h3>
             </div>
-            <form onSubmit={handleUpdateTask} className="p-8 overflow-y-auto flex-1 space-y-6">
+            <form onSubmit={handleUpdateTask} className="p-8 overflow-y-auto flex-1 space-y-6 text-left">
               
               <div>
                 <label className="block text-sm font-bold text-gray-600 mb-2">タスク名 <span className="text-red-500">*</span></label>
