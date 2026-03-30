@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   LuPlus, LuCircleCheck, LuCircle, LuTrash2, LuFilePlus, LuPenLine, LuInfo, LuCalendarDays, LuAlignLeft, LuUsers
 } from "react-icons/lu";
@@ -41,6 +41,7 @@ interface Task {
 export const TaskDetail: React.FC = () => {
   const { communityId, taskId } = useParams<{ communityId: string; taskId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   
   const API_BASE = import.meta.env.VITE_API_BASE_URL;
   const token = localStorage.getItem('access_token');
@@ -61,6 +62,15 @@ export const TaskDetail: React.FC = () => {
   const [editPriority, setEditPriority] = useState<'大' | '中' | '小'>('中');
   const [editDeadline, setEditDeadline] = useState('');
 
+  // 編集モーダルを開く関数（ステートへの反映含む）
+  const openEditModal = useCallback((targetTask: Task) => {
+    setEditName(targetTask.name);
+    setEditDesc(targetTask.description || '');
+    setEditPriority(targetTask.priority);
+    setEditDeadline(targetTask.deadline ? new Date(targetTask.deadline).toISOString().slice(0, 16) : '');
+    setShowEditModal(true);
+  }, []);
+
   const fetchTaskDetail = useCallback(async () => {
     if (!communityId || !taskId) return;
     try {
@@ -77,14 +87,24 @@ export const TaskDetail: React.FC = () => {
       if (taskRes.ok) {
         const data = (await taskRes.json()) as Task[];
         const currentTask = data.find((t: Task) => t.id === taskId);
-        if (currentTask) setTask(currentTask);
+        if (currentTask) {
+          setTask(currentTask);
+          
+          // ✨ データ取得直後にクエリパラメータを確認してモーダルを開く
+          const queryParams = new URLSearchParams(location.search);
+          if (queryParams.get('edit') === 'true') {
+            openEditModal(currentTask);
+            // URLを綺麗にする（replace: true で履歴を汚さない）
+            navigate(location.pathname, { replace: true });
+          }
+        }
       }
     } catch (e) {
       console.error("データの取得に失敗しました", e);
     } finally {
       setLoading(false);
     }
-  }, [taskId, communityId, API_BASE, token]);
+  }, [taskId, communityId, API_BASE, token, location.search, navigate, openEditModal, location.pathname]);
 
   useEffect(() => {
     fetchTaskDetail();
@@ -125,10 +145,7 @@ export const TaskDetail: React.FC = () => {
     fetchTaskDetail();
   };
 
-  // ✨ ここを大改修！オプティミスティック更新を導入
   const handleProgressChange = async (value: number) => {
-    // 1. サーバーの応答を待たずに、画面のデータ（task）を直接新しい数値に書き換える！
-    // これにより、指を離した瞬間に古いデータに巻き戻るのを防ぎます。
     if (task) {
       const updatedAssignees = task.assignees.map(a => 
         a.id === currentUserId ? { ...a, progress: value } : a
@@ -137,14 +154,12 @@ export const TaskDetail: React.FC = () => {
     }
 
     try {
-      // 2. その裏でこっそりサーバーに最新の数値を送信する
       await fetch(`${API_BASE}/tasks/progress`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ task_id: taskId, progress: value })
       });
       
-      // 3. 送信が成功したら、念のため最新のデータを再取得（全体の平均進捗などを正確に合わせるため）
       fetchTaskDetail(); 
     } catch (e) {
       console.error("進捗の保存に失敗しました", e);
@@ -238,14 +253,9 @@ export const TaskDetail: React.FC = () => {
     }
   };
 
-  const openEditModal = () => {
-    if (task) {
-      setEditName(task.name);
-      setEditDesc(task.description || '');
-      setEditPriority(task.priority);
-      setEditDeadline(task.deadline ? new Date(task.deadline).toISOString().slice(0, 16) : '');
-      setShowEditModal(true);
-    }
+  // 手動呼び出し用のラッパー（Headerから利用）
+  const onManualOpenEditModal = () => {
+    if (task) openEditModal(task);
   };
 
   if (loading || !task) return <div className="flex items-center justify-center h-screen bg-gray-50 text-blue-600 font-black animate-pulse">LOADING...</div>;
@@ -261,7 +271,7 @@ export const TaskDetail: React.FC = () => {
         showBackButton={true}
         onBack={() => navigate(-1)}
         menuItems={[
-          { label: 'タスクを編集する', icon: <LuPenLine />, onClick: openEditModal },
+          { label: 'タスクを編集する', icon: <LuPenLine />, onClick: onManualOpenEditModal },
           { label: 'タスクを削除する', icon: <LuTrash2 />, isDanger: true, onClick: handleDeleteTask }
         ]} 
       />

@@ -228,8 +228,10 @@ export const ProjectMain: React.FC = () => {
       });
 
       if (res.ok) {
+        const createdTask = await res.json();
         setNewTaskTitle('');
-        await fetchTasks(); 
+        // 詳細画面へ遷移し、クエリパラメータで編集モードを指示
+        navigate(`/project/${communityId}/task/${createdTask.id}?edit=true`);
       } else {
         const errorData = await res.json().catch(() => ({}));
         alert(`タスクの作成に失敗しました: ${errorData.detail || '不正なリクエスト'}`);
@@ -244,10 +246,8 @@ export const ProjectMain: React.FC = () => {
 
   if (isLoading) return <div className="p-8 text-center text-gray-500 animate-pulse">読み込み中...</div>;
 
-  // ✨ 進捗計算ロジック
   const parentTasks = tasks.filter(t => !t.parentId && !t.parent_task_id);
   
-  // 親タスクの平均進捗率を算出（新しく追加された0%のタスクも分母に含まれる）
   const totalProjectProgress = parentTasks.length > 0 
     ? Math.round(parentTasks.reduce((acc, t) => acc + (t.progress || 0), 0) / parentTasks.length)
     : 0;
@@ -274,7 +274,6 @@ export const ProjectMain: React.FC = () => {
       <div className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto pb-32">
         <div className="max-w-4xl mx-auto space-y-8">
           
-          {/* ✨ プロジェクト全体サマリー */}
           <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl border border-blue-50 flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="flex-1 w-full">
               <div className="flex items-center gap-2 mb-2">
