@@ -4,7 +4,7 @@ import { Chat } from './Chat';
 import { 
   LuX, LuMessageSquare, LuUsers, LuUserPlus, LuPenLine, LuLogOut, LuCopy, LuChevronRight, 
   LuPlus, LuFolderOpen, LuFile, LuCircleCheck, LuArrowDownUp, LuArrowDown, LuArrowUp, LuTrash2,
-  LuUserMinus // ✨ これを追加！
+  LuUserMinus, LuTrophy // ✨ 両方のブランチのアイコンを合体！
 } from "react-icons/lu";
 import { Header } from './Header';
 
@@ -70,9 +70,9 @@ export const ProjectMain: React.FC = () => {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [isCreatingTask, setIsCreatingTask] = useState(false);
 
+  // ✨ フィルター・ソート機能（promainブランチから）
   const [sortKey, setSortKey] = useState<SortKey>('created_at');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
-
   const [showOnlyMyTasks, setShowOnlyMyTasks] = useState(false);
   const [hideCompleted, setHideCompleted] = useState(false);
 
@@ -262,12 +262,11 @@ export const ProjectMain: React.FC = () => {
     }
   };
 
- const handleDeleteProject = async () => {
+  const handleDeleteProject = async () => {
     if (!window.confirm("本当にこのプロジェクトを削除しますか？\n（すべてのタスクやチャット履歴が完全に消去され、元に戻せません！）")) return;
 
     try {
       const token = localStorage.getItem('access_token');
-      // ✨ 修正: DELETEメソッドでは body がサーバーに届かないことがあるため、URLの末尾（queryパラメータ）にIDをくっつける！
       const res = await fetch(`${API_BASE}/community/delete?community_id=${communityId}`, {
         method: 'DELETE',
         headers: { 
@@ -288,7 +287,6 @@ export const ProjectMain: React.FC = () => {
     }
   };
 
-  // ✨ 【新規】プロジェクト退出処理を追加
   const handleLeaveProject = async () => {
     if (!window.confirm("本当にこのプロジェクトから退出しますか？\n（担当しているタスクからは自動的に外れます。再度参加するには招待コードが必要です）")) return;
 
@@ -347,7 +345,6 @@ export const ProjectMain: React.FC = () => {
           valB = b.title || b.name || '';
           break;
         case 'priority': {
-          // ✨ ESLintエラー回避のため、{ } でスコープを作りました
           const pMap: Record<string, number> = { '大': 3, '中': 2, '小': 1 };
           valA = pMap[a.priority] || 0;
           valB = pMap[b.priority] || 0;
@@ -373,6 +370,13 @@ export const ProjectMain: React.FC = () => {
 
   if (isLoading) return <div className="p-8 text-center text-gray-500 animate-pulse">読み込み中...</div>;
 
+  // ✨ 進捗計算ロジック（mainブランチから統合）
+  const parentTasks = tasks.filter(t => !t.parentId && !t.parent_task_id);
+  
+  const totalProjectProgress = parentTasks.length > 0 
+    ? Math.round(parentTasks.reduce((acc, t) => acc + (t.progress || 0), 0) / parentTasks.length)
+    : 0;
+
   return (
     <div className="relative flex flex-col h-screen bg-gray-50 text-gray-900 font-sans overflow-hidden">
       
@@ -388,7 +392,6 @@ export const ProjectMain: React.FC = () => {
           },
           { label: '招待コードを表示', icon: <LuUserPlus />, onClick: () => setShowInviteModal(true) },
           { label: 'このプロジェクトでの表示名変更', icon: <LuPenLine />, onClick: handleOpenNameModal },
-          // ✨ ここに退出ボタンを追加！
           { label: 'プロジェクトから退出する', icon: <LuUserMinus />, isDanger: true, onClick: handleLeaveProject },
           { label: 'プロジェクトを削除する', icon: <LuTrash2 />, isDanger: true, onClick: handleDeleteProject },
           { label: 'ログアウト', icon: <LuLogOut />, isDanger: true, onClick: () => { localStorage.removeItem('access_token'); navigate('/login'); } }
@@ -398,6 +401,36 @@ export const ProjectMain: React.FC = () => {
       <div className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto pb-32">
         <div className="max-w-4xl mx-auto space-y-8">
           
+          {/* ✨ プロジェクト全体サマリー（mainブランチから統合） */}
+          <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl border border-blue-50 flex flex-col sm:flex-row items-center justify-between gap-6">
+            <div className="flex-1 w-full">
+              <div className="flex items-center gap-2 mb-2">
+                <LuTrophy className="text-yellow-500 w-5 h-5" />
+                <span className="text-sm font-black text-gray-400 uppercase tracking-[0.2em]">Project Overall</span>
+              </div>
+              <div className="flex items-end gap-3 mb-4">
+                <span className="text-5xl font-black text-blue-600 tracking-tighter">{totalProjectProgress}%</span>
+                <span className="text-sm font-bold text-gray-400 mb-2">完了</span>
+              </div>
+              <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden shadow-inner">
+                <div 
+                  className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-1000 ease-out" 
+                  style={{ width: `${totalProjectProgress}%` }}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4 w-full sm:w-auto">
+                <div className="bg-blue-50 p-4 rounded-3xl text-center border border-blue-100">
+                    <p className="text-[10px] font-black text-blue-400 uppercase mb-1">Total Tasks</p>
+                    <p className="text-xl font-black text-blue-700">{parentTasks.length}</p>
+                </div>
+                <div className="bg-emerald-50 p-4 rounded-3xl text-center border border-emerald-100">
+                    <p className="text-[10px] font-black text-emerald-400 uppercase mb-1">Completed</p>
+                    <p className="text-xl font-black text-emerald-700">{parentTasks.filter(t => t.progress === 100).length}</p>
+                </div>
+            </div>
+          </div>
+
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
             <h2 className="text-xl font-black mb-4 text-gray-800">新しいタスクを追加</h2>
             <form onSubmit={handleCreateParentTask} className="flex gap-3">
