@@ -4,7 +4,7 @@ import { Chat } from './Chat';
 import { 
   LuX, LuMessageSquare, LuUsers, LuUserPlus, LuPenLine, LuLogOut, LuCopy, LuChevronRight, 
   LuPlus, LuFolderOpen, LuCircleCheck, LuArrowDownUp, LuArrowDown, LuArrowUp, LuTrash2,
-  LuUserMinus, LuTrophy, LuLeaf // ✨ LuLeaf（葉っぱアイコン）を追加！
+  LuUserMinus, LuTrophy, LuLeaf, LuCalendarDays // ✨ LuCalendarDays（カレンダーアイコン）を追加
 } from "react-icons/lu";
 import { Header } from './Header';
 
@@ -44,11 +44,11 @@ interface Task {
 type SortKey = 'created_at' | 'deadline' | 'priority' | 'progress' | 'name';
 type SortOrder = 'asc' | 'desc';
 
-// ✨ 提案2：進捗度に応じた「色の成長」テーマを生成する関数
+// 進捗度に応じた「色の成長」テーマ
 const getProgressTheme = (progress: number) => {
   if (progress === 100) return {
     barBg: 'bg-gradient-to-r from-emerald-400 to-cyan-400 shadow-[0_0_12px_rgba(52,211,153,0.6)]',
-    lineBg: 'bg-emerald-400', // 枝の色
+    lineBg: 'bg-emerald-400',
     text: 'text-emerald-600',
     border: 'border-emerald-300',
     cardBg: 'bg-emerald-50/30',
@@ -73,7 +73,7 @@ const getProgressTheme = (progress: number) => {
     hoverBg: 'hover:bg-lime-50',
     iconText: 'text-lime-500'
   };
-  return { // 0-29% (土や種のイメージ)
+  return { 
     barBg: 'bg-amber-600',
     lineBg: 'bg-amber-300',
     text: 'text-amber-800',
@@ -82,6 +82,43 @@ const getProgressTheme = (progress: number) => {
     hoverBg: 'hover:bg-amber-50',
     iconText: 'text-amber-600'
   };
+};
+
+// ✨ 提案4：期限の状態を判定して「焦りUI」のスタイルを返す関数
+const getDeadlineStatus = (deadlineStr: string | null, isCompleted: boolean) => {
+  if (!deadlineStr) return null;
+  
+  const deadline = new Date(deadlineStr);
+  
+  // 100%完了している場合は、ただの日付を薄く表示するだけ（焦らせない）
+  if (isCompleted) {
+    return { 
+      text: deadline.toLocaleDateString(), 
+      className: 'bg-gray-100 text-gray-400 border-transparent',
+      isUrgent: false
+    };
+  }
+
+  // 日付の比較のために0時0分に揃える
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(deadline);
+  target.setHours(0, 0, 0, 0);
+  
+  // 何日差か計算
+  const diffTime = target.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays < 0) {
+    return { text: '⚠️ 期限切れ', className: 'bg-red-100 text-red-700 border-red-300 animate-pulse shadow-sm', isUrgent: true };
+  } else if (diffDays === 0) {
+    return { text: '🔥 今日まで', className: 'bg-orange-100 text-orange-700 border-orange-300 animate-pulse shadow-sm', isUrgent: true };
+  } else if (diffDays === 1) {
+    return { text: '⚡ 明日まで', className: 'bg-yellow-100 text-yellow-700 border-yellow-300 shadow-sm', isUrgent: true };
+  } else {
+    // 余裕がある場合は普通に日付を表示
+    return { text: deadline.toLocaleDateString(), className: 'bg-gray-100 text-gray-500 border-transparent', isUrgent: false };
+  }
 };
 
 export const ProjectMain: React.FC = () => {
@@ -415,7 +452,6 @@ export const ProjectMain: React.FC = () => {
     ? Math.round(parentTasks.reduce((acc, t) => acc + (t.progress || 0), 0) / parentTasks.length)
     : 0;
   
-  // プロジェクト全体のテーマ色
   const projectTheme = getProgressTheme(totalProjectProgress);
 
   return (
@@ -442,7 +478,6 @@ export const ProjectMain: React.FC = () => {
       <div className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto pb-32">
         <div className="max-w-4xl mx-auto space-y-8">
           
-          {/* ✨ プロジェクト全体サマリー（色も連動） */}
           <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl border border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="flex-1 w-full">
               <div className="flex items-center gap-2 mb-2">
@@ -563,7 +598,10 @@ export const ProjectMain: React.FC = () => {
                 sortedParentTasks.map(parentTask => {
                   const childTasks = tasks.filter(t => t.parentId === parentTask.id || t.parent_task_id === parentTask.id);
                   const isCompleted = parentTask.progress === 100;
-                  const parentTheme = getProgressTheme(parentTask.progress); // ✨ 親タスクのテーマ色
+                  const parentTheme = getProgressTheme(parentTask.progress);
+                  
+                  // ✨ 親タスクの期限情報を取得
+                  const deadlineInfo = getDeadlineStatus(parentTask.deadline, isCompleted);
                   
                   return (
                     <div key={parentTask.id} className={`rounded-3xl border overflow-hidden transition-all duration-500 shadow-sm ${parentTheme.cardBg} ${parentTheme.border}`}>
@@ -585,11 +623,20 @@ export const ProjectMain: React.FC = () => {
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-3 mt-2">
+                          <div className="flex flex-wrap items-center gap-2 mt-2">
                             <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md bg-gray-100 ${parentTheme.text}`}>
                               {parentTask.status}
                             </span>
-                            <div className={`flex-1 h-2 rounded-full overflow-hidden bg-gray-100`}>
+                            
+                            {/* ✨ 親タスクの焦りUI（期限バッジ） */}
+                            {deadlineInfo && (
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${deadlineInfo.className}`}>
+                                <LuCalendarDays className="w-3 h-3" />
+                                {deadlineInfo.text}
+                              </span>
+                            )}
+
+                            <div className={`flex-1 h-2 rounded-full overflow-hidden bg-gray-100 min-w-[50px]`}>
                               <div className={`h-full transition-all duration-1000 ${parentTheme.barBg}`} style={{ width: `${parentTask.progress}%` }} />
                             </div>
                             <span className={`text-xs font-black w-8 text-right transition-colors duration-500 ${parentTheme.text}`}>{parentTask.progress}%</span>
@@ -597,24 +644,25 @@ export const ProjectMain: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* ✨ 提案1：枝葉のUI */}
+                      {/* 子タスク */}
                       {childTasks.length > 0 && (
                         <div className="relative pt-3 pb-5 pr-5">
-                          {/* 樹の幹（縦線） */}
                           <div className={`absolute left-[2.35rem] top-0 bottom-8 w-1 rounded-b-full transition-colors duration-500 ${parentTheme.lineBg}`}></div>
                           
                           <div className="space-y-3">
                             {childTasks.map(childTask => {
                               const isMyChild = childTask.assignees?.some(a => a.id === currentUserId);
                               const childCompleted = childTask.progress === 100;
-                              const childTheme = getProgressTheme(childTask.progress); // ✨ 子タスクのテーマ色
+                              const childTheme = getProgressTheme(childTask.progress);
+                              
+                              // ✨ 子タスクの期限情報を取得
+                              const childDeadlineInfo = getDeadlineStatus(childTask.deadline, childCompleted);
 
                               if (hideCompleted && childCompleted) return null;
                               if (showOnlyMyTasks && !isMyChild) return null;
 
                               return (
                                 <div key={childTask.id} className="relative ml-[4rem] group/child">
-                                  {/* 樹の枝（横線） */}
                                   <div className={`absolute -left-[1.65rem] top-1/2 w-[1.65rem] h-1 transition-colors duration-500 ${childTheme.lineBg}`}></div>
                                   
                                   <div 
@@ -623,13 +671,21 @@ export const ProjectMain: React.FC = () => {
                                   >
                                     <LuLeaf className={`w-5 h-5 flex-shrink-0 transition-colors duration-500 ${childTheme.iconText}`} />
                                     <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                      <div className="flex items-center gap-2">
+                                      <div className="flex flex-wrap items-center gap-2">
                                         <h4 className={`font-bold text-sm truncate transition-colors duration-500 ${childCompleted ? 'text-emerald-700' : 'text-gray-700 group-hover/child:text-blue-600'}`}>
                                           {childTask.title || childTask.name}
                                         </h4>
                                         {childCompleted && <span className="text-[10px] font-black text-emerald-500 bg-emerald-50 px-1.5 rounded">DONE</span>}
+                                        
+                                        {/* ✨ 子タスクの焦りUI（期限バッジ） */}
+                                        {!childCompleted && childDeadlineInfo && (
+                                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 ${childDeadlineInfo.className}`}>
+                                            {childDeadlineInfo.isUrgent && <LuCalendarDays className="w-3 h-3" />}
+                                            {childDeadlineInfo.text}
+                                          </span>
+                                        )}
                                       </div>
-                                      <div className="flex items-center gap-3 w-full sm:w-1/3">
+                                      <div className="flex items-center gap-3 w-full sm:w-1/3 mt-1 sm:mt-0">
                                         <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                                           <div className={`h-full transition-all duration-1000 ${childTheme.barBg}`} style={{ width: `${childTask.progress}%` }} />
                                         </div>
