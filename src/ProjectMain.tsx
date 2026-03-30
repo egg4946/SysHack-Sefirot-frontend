@@ -70,11 +70,35 @@ export const ProjectMain: React.FC = () => {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [isCreatingTask, setIsCreatingTask] = useState(false);
 
-  // フィルター・ソート機能用のState
   const [sortKey, setSortKey] = useState<SortKey>('created_at');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [showOnlyMyTasks, setShowOnlyMyTasks] = useState(false);
   const [hideCompleted, setHideCompleted] = useState(false);
+
+  // ✨ メイン画面用：進捗率に基づいてステータスを自動更新する関数
+  const syncTaskStatusIfNeeded = useCallback(async (task: Task) => {
+    let autoStatus = '進行中';
+    if (task.progress === 0) autoStatus = '未着手';
+    else if (task.progress === 100) autoStatus = '完了';
+
+    if (task.status !== autoStatus) {
+      try {
+        const token = localStorage.getItem('access_token');
+        await fetch(`${API_BASE}/tasks/status`, {
+          method: 'PATCH',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}` 
+          },
+          body: JSON.stringify({ task_id: task.id, status: autoStatus })
+        });
+        // 画面上の表示を即座に更新するためにStateも更新
+        setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: autoStatus } : t));
+      } catch (e) {
+        console.error("ステータス自動同期エラー:", e);
+      }
+    }
+  }, []);
 
   const fetchMembers = useCallback(async (userIdToFind: string) => {
     if (!communityId) return;
@@ -104,13 +128,16 @@ export const ProjectMain: React.FC = () => {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
-        const data = await res.json();
+        const data: Task[] = await res.json();
         setTasks(data);
+        
+        // ✨ 全タスクに対して進捗とステータスの乖離をチェックして同期
+        data.forEach(task => syncTaskStatusIfNeeded(task));
       }
     } catch (e) {
       console.error("タスクの取得に失敗しました", e);
     }
-  }, [communityId]);
+  }, [communityId, syncTaskStatusIfNeeded]);
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -250,7 +277,6 @@ export const ProjectMain: React.FC = () => {
       if (res.ok) {
         const createdTask = await res.json();
         setNewTaskTitle('');
-        // 詳細画面へ遷移し、クエリパラメータで編集モードを指示
         navigate(`/project/${communityId}/task/${createdTask.id}?edit=true`);
       } else {
         const errorData = await res.json().catch(() => ({}));
@@ -372,7 +398,6 @@ export const ProjectMain: React.FC = () => {
 
   if (isLoading) return <div className="p-8 text-center text-gray-500 animate-pulse">読み込み中...</div>;
 
-  // 進捗計算ロジック
   const parentTasks = tasks.filter(t => !t.parentId && !t.parent_task_id);
   
   const totalProjectProgress = parentTasks.length > 0 
@@ -387,15 +412,11 @@ export const ProjectMain: React.FC = () => {
         showBackButton={true}
         onBack={() => navigate('/select-project')}
         menuItems={[
-          { 
-            label: 'メンバー一覧', 
-            icon: <LuUsers />, 
-            onClick: () => { fetchMembers(currentUserId); setShowMemberModal(true); } 
-          },
+          { label: 'メンバー一覧', icon: <LuUsers />, onClick: () => { fetchMembers(currentUserId); setShowMemberModal(true); } },
           { label: '招待コードを表示', icon: <LuUserPlus />, onClick: () => setShowInviteModal(true) },
-          { label: 'このプロジェクトでの表示名変更', icon: <LuPenLine />, onClick: handleOpenNameModal },
-          { label: 'プロジェクトから退出する', icon: <LuUserMinus />, isDanger: true, onClick: handleLeaveProject },
-          { label: 'プロジェクトを削除する', icon: <LuTrash2 />, isDanger: true, onClick: handleDeleteProject },
+          { label: '表示名変更', icon: <LuPenLine />, onClick: handleOpenNameModal },
+          { label: 'プロジェクトから退出', icon: <LuUserMinus />, isDanger: true, onClick: handleLeaveProject },
+          { label: 'プロジェクト削除', icon: <LuTrash2 />, isDanger: true, onClick: handleDeleteProject },
           { label: 'ログアウト', icon: <LuLogOut />, isDanger: true, onClick: () => { localStorage.removeItem('access_token'); navigate('/login'); } }
         ]} 
       />
@@ -403,7 +424,6 @@ export const ProjectMain: React.FC = () => {
       <div className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto pb-32">
         <div className="max-w-4xl mx-auto space-y-8">
           
-          {/* プロジェクト全体サマリー */}
           <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl border border-blue-50 flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="flex-1 w-full">
               <div className="flex items-center gap-2 mb-2">
@@ -455,9 +475,7 @@ export const ProjectMain: React.FC = () => {
           </div>
 
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-            
             <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
-              
               <h2 className="text-xl font-black text-gray-800 flex items-center gap-3">
                 <span>タスク一覧</span>
                 <span className="text-sm font-bold text-gray-400 bg-gray-100 px-3 py-1 rounded-full whitespace-nowrap">
@@ -503,7 +521,6 @@ export const ProjectMain: React.FC = () => {
                   <button
                     onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
                     className="p-1.5 bg-white rounded-xl shadow-sm border border-gray-200 hover:bg-gray-50 text-gray-600 transition flex items-center justify-center w-8 h-8"
-                    title={sortOrder === 'asc' ? "昇順 (小さい順/古い順)" : "降順 (大きい順/新しい順)"}
                   >
                     {sortOrder === 'asc' ? <LuArrowUp className="w-4 h-4" /> : <LuArrowDown className="w-4 h-4" />}
                   </button>
@@ -515,7 +532,6 @@ export const ProjectMain: React.FC = () => {
               {sortedParentTasks.length === 0 ? (
                 <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-2xl">
                   <p className="text-gray-400 font-bold">表示できるタスクがありません</p>
-                  <p className="text-xs text-gray-400 mt-1">フィルターを解除するか、新しいタスクを追加してください</p>
                 </div>
               ) : (
                 sortedParentTasks.map(parentTask => {
@@ -606,8 +622,7 @@ export const ProjectMain: React.FC = () => {
       </div>
       
       <div className={`fixed z-40 transition-all duration-300 transform ${
-        'inset-0 w-full h-full rounded-none origin-bottom' +
-        ' sm:inset-auto sm:bottom-28 sm:right-6 sm:w-[400px] sm:h-[600px] sm:rounded-2xl sm:shadow-2xl sm:border sm:border-gray-300 sm:origin-bottom-right '
+        'inset-0 w-full h-full rounded-none origin-bottom sm:inset-auto sm:bottom-28 sm:right-6 sm:w-[400px] sm:h-[600px] sm:rounded-2xl sm:shadow-2xl sm:border sm:border-gray-300 sm:origin-bottom-right '
       } ${
         isChatOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95 pointer-events-none'
       }`}>
@@ -667,7 +682,6 @@ export const ProjectMain: React.FC = () => {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl text-center">
             <h3 className="text-xl font-black mb-2">招待コード</h3>
-            <p className="text-sm text-gray-500 mb-6">メンバーを招待するためのコードです</p>
             <div className="text-4xl font-black tracking-[0.2em] text-blue-600 bg-blue-50 py-4 rounded-2xl mb-6 border border-blue-100">
               {inviteCode}
             </div>
@@ -685,7 +699,6 @@ export const ProjectMain: React.FC = () => {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-black mb-2">表示名の変更</h3>
-            <p className="text-sm text-gray-500 mb-6">このプロジェクト内でのみ使われる名前です</p>
             <input 
               type="text" 
               placeholder="新しい表示名" 
@@ -696,9 +709,7 @@ export const ProjectMain: React.FC = () => {
             />
             <div className="flex gap-3">
               <button onClick={() => setShowNameModal(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200">キャンセル</button>
-              <button onClick={handleChangeName} disabled={!newName.trim()} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:bg-gray-300 transition shadow-lg shadow-blue-500/30">
-                変更する
-              </button>
+              <button onClick={handleChangeName} disabled={!newName.trim()} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700">変更する</button>
             </div>
           </div>
         </div>

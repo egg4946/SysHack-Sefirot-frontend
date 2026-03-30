@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   LuPlus, LuCircleCheck, LuCircle, LuTrash2, LuFilePlus, LuPenLine, LuInfo, LuCalendarDays, LuAlignLeft, LuUsers, LuUserMinus,
-  LuFolderOpen, LuUserPlus, LuX, LuChevronRight, LuPlay
+  LuFolderOpen, LuUserPlus, LuX, LuChevronRight, LuPlay, LuFile
 } from "react-icons/lu";
 import { Header } from './Header';
 
@@ -80,6 +80,31 @@ export const TaskDetail: React.FC = () => {
     setShowEditModal(true);
   }, []);
 
+  // ✨ 親タスクのステータスを子タスクの進捗から自動計算して同期する関数
+  const syncParentStatus = useCallback(async (parentTask: Task, children: Task[]) => {
+    if (children.length === 0) return;
+
+    const avgProgress = Math.round(children.reduce((acc, c) => acc + c.progress, 0) / children.length);
+    let autoStatus: '未着手' | '進行中' | '完了' = '進行中';
+    if (avgProgress === 0) autoStatus = '未着手';
+    else if (avgProgress === 100) autoStatus = '完了';
+
+    // 現在の状態と異なる場合のみAPIを叩く
+    if (parentTask.status !== autoStatus) {
+      try {
+        await fetch(`${API_BASE}/tasks/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ task_id: parentTask.id, status: autoStatus })
+        });
+        // ローカルのステータスも更新
+        setTask(prev => prev ? { ...prev, status: autoStatus } : null);
+      } catch (e) {
+        console.error("ステータスの自動同期に失敗しました", e);
+      }
+    }
+  }, [API_BASE, token]);
+
   const fetchTaskDetail = useCallback(async () => {
     if (!communityId || !taskId) return;
     try {
@@ -100,6 +125,13 @@ export const TaskDetail: React.FC = () => {
         const currentTask = data.find((t: Task) => t.id === taskId);
         if (currentTask) {
           setTask(currentTask);
+
+          // ✨ 子タスクがある場合、ステータスの同期をチェック
+          const children = data.filter(t => t.parent_task_id === taskId);
+          if (children.length > 0) {
+            syncParentStatus(currentTask, children);
+          }
+          
           const queryParams = new URLSearchParams(location.search);
           if (queryParams.get('edit') === 'true') {
             openEditModal(currentTask);
@@ -117,7 +149,7 @@ export const TaskDetail: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [taskId, communityId, API_BASE, token, location.search, navigate, openEditModal, location.pathname]);
+  }, [taskId, communityId, API_BASE, token, location.search, navigate, openEditModal, location.pathname, syncParentStatus]);
 
   useEffect(() => {
     fetchTaskDetail();
@@ -255,6 +287,14 @@ export const TaskDetail: React.FC = () => {
   const handleCreateChildTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newChildTaskName.trim() || isCreatingChild) return;
+
+    const currentChildTasks = allTasks.filter(t => t.parent_task_id === taskId);
+    if (currentChildTasks.length === 0 && (task?.assignees.length || 0) > 0) {
+      if (!window.confirm("子タスクを作成すると、このタスク（親）に現在設定されている担当者や進捗データはすべてリセットされます。よろしいですか？")) {
+        return;
+      }
+    }
+
     setIsCreatingChild(true);
     try {
       const res = await fetch(`${API_BASE}/tasks/create`, {
@@ -315,6 +355,7 @@ export const TaskDetail: React.FC = () => {
   const isAssigned = task.assignees.some(a => a.id === currentUserId);
   const myData = task.assignees.find(a => a.id === currentUserId);
   const childTasks = allTasks.filter(t => t.parent_task_id === taskId);
+  const hasChildren = childTasks.length > 0;
   const unassignedMembers = members.filter(m => !task.assignees.some(a => a.id === m.id));
 
   return (
@@ -326,8 +367,8 @@ export const TaskDetail: React.FC = () => {
         onBack={() => navigate(-1)}
         menuItems={[
           { label: 'タスクを編集する', icon: <LuPenLine />, onClick: onManualOpenEditModal },
-          { label: 'メンバーを割り振る', icon: <LuUserPlus />, onClick: () => setShowAssignModal(true) },
-          ...(isAssigned ? [{ label: 'このタスクから退出する', icon: <LuUserMinus />, isDanger: true, onClick: handleLeaveTask }] : []),
+          ...(!hasChildren ? [{ label: 'メンバーを割り振る', icon: <LuUserPlus />, onClick: () => setShowAssignModal(true) }] : []),
+          ...(isAssigned && !hasChildren ? [{ label: 'このタスクから退出する', icon: <LuUserMinus />, isDanger: true, onClick: handleLeaveTask }] : []),
           { label: 'タスクを削除する', icon: <LuTrash2 />, isDanger: true, onClick: handleDeleteTask }
         ]} 
       />
@@ -374,96 +415,141 @@ export const TaskDetail: React.FC = () => {
           </div>
         </div>
 
-        <section className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
-          <div className="flex items-center gap-2 mb-6 border-b pb-4">
-            <LuUsers className="w-6 h-6 text-blue-500" />
-            <h3 className="text-xl font-black text-gray-800 tracking-tight">担当メンバー</h3>
-          </div>
-          
-          <div className="space-y-4">
-            {task.assignees.length > 0 ? (
-              task.assignees.map(assignee => (
-                <div key={assignee.id} className="flex items-center gap-4 bg-gray-50/50 p-4 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-sm transition">
-                  <button
-                    onClick={() => navigate(`/project/${communityId}/member/${assignee.id}`)}
-                    className="w-1/3 text-left font-extrabold text-sm sm:text-base text-gray-700 hover:text-blue-600 hover:underline truncate transition"
-                  >
-                    {assignee.display_name}
-                  </button>
-                  <div className="flex-1 flex items-center gap-3">
-                    <div className="flex-1 h-2.5 bg-gray-200 rounded-full overflow-hidden shadow-inner">
-                      <div 
-                        className={`h-full transition-all duration-1000 ${assignee.progress === 100 ? 'bg-emerald-400' : 'bg-blue-500'}`} 
-                        style={{ width: `${assignee.progress}%` }} 
-                      />
-                    </div>
-                    <span className={`text-xs font-black w-8 text-right ${assignee.progress === 100 ? 'text-emerald-500' : 'text-blue-600'}`}>
-                      {assignee.progress}%
-                    </span>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-sm text-gray-400 font-bold text-center py-6">担当者はまだいません</p>
-            )}
-          </div>
-        </section>
-
-        {task.parent_task_id === null && childTasks.length > 0 && (
-          <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
+        {/* 子タスクがない場合のみ「担当メンバー」を表示 */}
+        {!hasChildren && (
+          <section className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
             <div className="flex items-center gap-2 mb-6 border-b pb-4">
-              <LuFolderOpen className="w-6 h-6 text-emerald-500" />
-              <h3 className="text-xl font-black text-gray-800 tracking-tight">この樹の枝（子タスク）</h3>
+              <LuUsers className="w-6 h-6 text-blue-500" />
+              <h3 className="text-xl font-black text-gray-800 tracking-tight">担当メンバー</h3>
             </div>
-            <div className="space-y-3">
-              {childTasks.map(child => (
-                <div 
-                  key={child.id}
-                  onClick={() => navigate(`/project/${communityId}/task/${child.id}`)}
-                  className="p-4 bg-gray-50 rounded-2xl flex items-center justify-between hover:bg-emerald-50 cursor-pointer transition border border-transparent hover:border-emerald-200 group"
-                >
-                  <span className="font-bold text-gray-700 group-hover:text-emerald-700">{child.name}</span>
-                  <div className="flex items-center gap-3">
-                    <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                      <div className="h-full bg-emerald-500" style={{ width: `${child.progress}%` }} />
+            
+            <div className="space-y-4">
+              {task.assignees.length > 0 ? (
+                task.assignees.map(assignee => (
+                  <div key={assignee.id} className="flex items-center gap-4 bg-gray-50/50 p-4 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-sm transition">
+                    <button
+                      onClick={() => navigate(`/project/${communityId}/member/${assignee.id}`)}
+                      className="w-1/3 text-left font-extrabold text-sm sm:text-base text-gray-700 hover:text-blue-600 hover:underline truncate transition"
+                    >
+                      {assignee.display_name}
+                    </button>
+                    <div className="flex-1 flex items-center gap-3">
+                      <div className="flex-1 h-2.5 bg-gray-200 rounded-full overflow-hidden shadow-inner">
+                        <div 
+                          className={`h-full transition-all duration-1000 ${assignee.progress === 100 ? 'bg-emerald-400' : 'bg-blue-500'}`} 
+                          style={{ width: `${assignee.progress}%` }} 
+                        />
+                      </div>
+                      <span className={`text-xs font-black w-8 text-right ${assignee.progress === 100 ? 'text-emerald-500' : 'text-blue-600'}`}>
+                        {assignee.progress}%
+                      </span>
                     </div>
-                    <span className="text-xs font-black text-emerald-600 w-8 text-right">{child.progress}%</span>
                   </div>
-                </div>
-              ))}
+                ))
+              ) : (
+                <p className="text-sm text-gray-400 font-bold text-center py-6">担当者はまだいません</p>
+              )}
             </div>
           </section>
         )}
 
-        {!isAssigned ? (
-          <button onClick={handleJoinTask} className="w-full py-6 bg-gradient-to-r from-blue-600 to-green-400 text-white rounded-3xl font-black text-xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
-            <LuPlus className="w-6 h-6" /> このタスクに参加して進捗を入力
-          </button>
-        ) : (
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-blue-100">
-            <div className="flex justify-between items-center mb-6">
-              <button 
-                onClick={() => navigate(`/project/${communityId}/member/${currentUserId}`)}
-                className="font-black text-xs uppercase tracking-widest text-blue-500 hover:text-blue-700 hover:underline transition"
-              >
-                {myData?.display_name}'s Progress
-              </button>
-              <span className="text-4xl font-black text-blue-600">{localProgress}%</span>
+        {/* 子タスク一覧表示セクション（メイン画面風のデザイン） */}
+        {hasChildren && (
+          <section className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
+            <div className="flex items-center justify-between mb-6 border-b pb-4">
+              <div className="flex items-center gap-2">
+                <LuFolderOpen className="w-6 h-6 text-emerald-500" />
+                <h3 className="text-xl font-black text-gray-800 tracking-tight">子タスク一覧</h3>
+              </div>
+              <span className="text-sm font-bold text-gray-400 bg-gray-100 px-3 py-1 rounded-full whitespace-nowrap">
+                全 {childTasks.length} 件
+              </span>
             </div>
             
-            <input 
-              type="range" 
-              min="0" max="100" 
-              value={localProgress} 
-              onPointerDown={() => setIsDragging(true)}
-              onChange={(e) => setLocalProgress(parseInt(e.target.value))}
-              onPointerUp={(e) => {
-                setIsDragging(false);
-                handleProgressChange(parseInt(e.currentTarget.value));
-              }}
-              className="w-full h-3 bg-gray-100 rounded-full appearance-none cursor-pointer accent-blue-600 border" 
-            />
-          </div>
+            <div className="space-y-4">
+              {childTasks.map(child => {
+                const isCompleted = child.progress === 100;
+                return (
+                  <div 
+                    key={child.id}
+                    onClick={() => navigate(`/project/${communityId}/task/${child.id}`)}
+                    className={`p-4 bg-white rounded-2xl border cursor-pointer transition flex items-center gap-4 group ${
+                      isCompleted ? 'border-emerald-200 hover:bg-emerald-50' : 'border-gray-200 hover:bg-blue-50'
+                    }`}
+                  >
+                    {isCompleted ? (
+                      <LuCircleCheck className="w-6 h-6 text-emerald-500 flex-shrink-0" />
+                    ) : (
+                      <LuFile className="w-6 h-6 text-blue-500 flex-shrink-0 group-hover:text-blue-400" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h4 className={`font-extrabold truncate text-lg transition-colors ${
+                          isCompleted ? 'text-emerald-800' : 'text-gray-800 group-hover:text-blue-700'
+                        }`}>
+                          {child.name}
+                        </h4>
+                        {isCompleted && (
+                          <span className="text-[10px] font-black text-emerald-500 bg-emerald-50 px-1.5 rounded">DONE</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mt-2">
+                        <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md ${
+                          isCompleted ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'
+                        }`}>
+                          {child.status}
+                        </span>
+                        <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${isCompleted ? 'bg-emerald-100' : 'bg-gray-100'}`}>
+                          <div 
+                            className={`h-full ${isCompleted ? 'bg-emerald-500' : 'bg-blue-500'}`} 
+                            style={{ width: `${child.progress}%` }} 
+                          />
+                        </div>
+                        <span className={`text-xs font-black w-8 text-right ${isCompleted ? 'text-emerald-600' : 'text-blue-600'}`}>
+                          {child.progress}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* 進捗入力セクション：子タスクがない場合のみ表示 */}
+        {!hasChildren && (
+          <>
+            {!isAssigned ? (
+              <button onClick={handleJoinTask} className="w-full py-6 bg-gradient-to-r from-blue-600 to-green-400 text-white rounded-3xl font-black text-xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
+                <LuPlus className="w-6 h-6" /> このタスクに参加して進捗を入力
+              </button>
+            ) : (
+              <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-blue-100">
+                <div className="flex justify-between items-center mb-6">
+                  <button 
+                    onClick={() => navigate(`/project/${communityId}/member/${currentUserId}`)}
+                    className="font-black text-xs uppercase tracking-widest text-blue-500 hover:text-blue-700 hover:underline transition"
+                  >
+                    {myData?.display_name}'s Progress
+                  </button>
+                  <span className="text-4xl font-black text-blue-600">{localProgress}%</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="0" max="100" 
+                  value={localProgress} 
+                  onPointerDown={() => setIsDragging(true)}
+                  onChange={(e) => setLocalProgress(parseInt(e.target.value))}
+                  onPointerUp={(e) => {
+                    setIsDragging(false);
+                    handleProgressChange(parseInt(e.currentTarget.value));
+                  }}
+                  className="w-full h-3 bg-gray-100 rounded-full appearance-none cursor-pointer accent-blue-600 border" 
+                />
+              </div>
+            )}
+          </>
         )}
 
         <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
@@ -493,6 +579,7 @@ export const TaskDetail: React.FC = () => {
           </div>
         </section>
 
+        {/* 子タスク追加フォーム（親タスクのみ） */}
         {task.parent_task_id === null && (
           <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
