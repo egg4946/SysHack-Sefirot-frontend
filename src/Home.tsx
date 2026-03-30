@@ -25,7 +25,6 @@ export const Home: React.FC = () => {
           HACKATHON 2026 - TEAM SEFIROT
         </div>
         
-        {/* ✨ キャッチコピーの読点を削除し、改行位置を固定しました */}
         <h1 className="text-5xl sm:text-7xl font-black tracking-tight text-gray-900 leading-[1.1] mb-8 max-w-4xl">
           チームの進捗を<br />
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-emerald-400">
@@ -38,8 +37,9 @@ export const Home: React.FC = () => {
           「進捗の樹」は、親タスクと子タスクの進捗が自動で連動する、次世代のタスク管理ツールです。誰がどこまで終わらせたか、リアルタイムで可視化します。
         </p>
 
+        {/* ✨ 飛び先を /login に変更しました！ */}
         <button 
-          onClick={() => navigate('/register')}
+          onClick={() => navigate('/login')}
           className="group relative inline-flex items-center justify-center gap-3 px-8 py-5 text-lg font-black text-white bg-blue-600 rounded-[2rem] overflow-hidden shadow-2xl shadow-blue-500/30 hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all duration-300"
         >
           <span>プロジェクトを作成する</span>
