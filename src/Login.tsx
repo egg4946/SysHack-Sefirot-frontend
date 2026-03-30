@@ -48,38 +48,40 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-blue-100 via-green-100 to-purple-200">
-      <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-200">
-        <h2 className="text-3xl font-extrabold mb-8 text-center text-blue-700 tracking-wide drop-shadow">ログイン</h2>
+    <div className="w-full h-screen flex flex-col items-center justify-center" style={{ backgroundColor: '#586d87' }}>
+      <div className="p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-300" style={{ backgroundColor: '#bfc6d5' }}>
+        <h2 className="text-3xl font-extrabold mb-8 text-center text-white tracking-wide drop-shadow">ログイン</h2>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {error && <div className="text-red-600 text-center font-semibold mb-2">{error}</div>}
+          {error && <div className="text-red-400 text-center font-semibold mb-2">{error}</div>}
           <div>
-            <label className="block text-gray-700 font-semibold mb-1" htmlFor="email">メールアドレス</label>
+            <label className="block text-white font-semibold mb-1" htmlFor="email">メールアドレス</label>
             <input
               id="email"
               type="email"
               placeholder="your@email.com"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+              className="w-full p-3 border border-gray-400 rounded-lg text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-white transition"
+              style={{ backgroundColor: '#e8ecf0' }}
               required
             />
           </div>
           <div>
-            <label className="block text-gray-700 font-semibold mb-1" htmlFor="password">パスワード</label>
+            <label className="block text-white font-semibold mb-1" htmlFor="password">パスワード</label>
             <input
               id="password"
               type="password"
               placeholder="パスワード"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+              className="w-full p-3 border border-gray-400 rounded-lg text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-white transition"
+              style={{ backgroundColor: '#e8ecf0' }}
               required
             />
           </div>
           <button
             type="submit"
-            className="w-full bg-gradient-to-r from-blue-500 to-green-400 text-white py-3 rounded-lg font-bold text-lg shadow hover:from-blue-600 hover:to-green-500 transition mb-2 disabled:opacity-60"
+            className="w-full py-5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-3xl font-black text-lg shadow-xl shadow-blue-500/30 hover:scale-[1.02] active:scale-95 transition-all mb-2 disabled:opacity-60"
             disabled={loading}
           >
             {loading ? 'ログイン中...' : 'ログイン'}
@@ -87,7 +89,7 @@ const Login: React.FC = () => {
         </form>
         <button
           onClick={() => navigate('/register')}
-          className="w-full text-blue-600 hover:underline text-sm mt-4"
+          className="w-full text-white hover:underline text-sm mt-4"
         >
           新規登録はこちら
         </button>
@@ -96,4 +98,4 @@ const Login: React.FC = () => {
   );
 };
 
-export default Login;
+export default Login;          
