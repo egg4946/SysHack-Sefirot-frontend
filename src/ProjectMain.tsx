@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Chat } from './Chat';
 import { 
   LuX, LuMessageSquare, LuUsers, LuUserPlus, LuPenLine, LuLogOut, LuCopy, LuChevronRight, 
-  LuPlus, LuFolderOpen, LuFile, LuCircleCheck 
+  LuPlus, LuFolderOpen, LuFile, LuCircleCheck, LuTrophy
 } from "react-icons/lu";
 import { Header } from './Header';
 
@@ -35,7 +35,7 @@ export const ProjectMain: React.FC = () => {
   const navigate = useNavigate();
 
   const [currentUserId, setCurrentUserId] = useState<string>('');
-  const [myDisplayName, setMyDisplayName] = useState<string>(''); // ✨ 現在の自分の表示名を管理
+  const [myDisplayName, setMyDisplayName] = useState<string>('');
 
   const [isLoading, setIsLoading] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -56,7 +56,6 @@ export const ProjectMain: React.FC = () => {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [isCreatingTask, setIsCreatingTask] = useState(false);
 
-  // ✨ メンバー一覧を取得し、自分の名前を探してStateに保存する関数
   const fetchMembers = useCallback(async (userIdToFind: string) => {
     if (!communityId) return;
     try {
@@ -114,7 +113,7 @@ export const ProjectMain: React.FC = () => {
           }
           
           await fetchTasks();
-          await fetchMembers(userId); // ✨ 画面表示時に自分の名前を取得する
+          await fetchMembers(userId);
         }
       } catch (error) {
         console.error('データの取得に失敗しました', error);
@@ -161,13 +160,11 @@ export const ProjectMain: React.FC = () => {
     return () => clearInterval(intervalId);
   }, [communityId, isChatOpen]);
 
-  // ✨ 名前変更モーダルを開く処理（開いた時に今の名前をセットする）
   const handleOpenNameModal = () => {
     setNewName(myDisplayName);
     setShowNameModal(true);
   };
 
-  // ✨ 名前を変更して保存する処理
   const handleChangeName = async () => {
     if (!newName.trim()) return;
     try {
@@ -184,7 +181,6 @@ export const ProjectMain: React.FC = () => {
       if (res.ok) {
         alert("表示名を変更しました！");
         setShowNameModal(false);
-        // ✨ 更新成功後、もう一度データを引っ張ってきて画面を一瞬で書き換える
         await fetchMembers(currentUserId);
         await fetchTasks(); 
       } else {
@@ -248,12 +244,17 @@ export const ProjectMain: React.FC = () => {
 
   if (isLoading) return <div className="p-8 text-center text-gray-500 animate-pulse">読み込み中...</div>;
 
+  // ✨ 進捗計算ロジック
   const parentTasks = tasks.filter(t => !t.parentId && !t.parent_task_id);
+  
+  // 親タスクの平均進捗率を算出（新しく追加された0%のタスクも分母に含まれる）
+  const totalProjectProgress = parentTasks.length > 0 
+    ? Math.round(parentTasks.reduce((acc, t) => acc + (t.progress || 0), 0) / parentTasks.length)
+    : 0;
   
   return (
     <div className="relative flex flex-col h-screen bg-gray-50 text-gray-900 font-sans overflow-hidden">
       
-      {/* ✨ ヘッダーに「プロジェクト名（👤 今の表示名）」と出るように変更 */}
       <Header 
         title={projectName ? `${projectName} （👤 ${myDisplayName}）` : "Sefirot Project"} 
         showBackButton={true}
@@ -265,7 +266,7 @@ export const ProjectMain: React.FC = () => {
             onClick: () => { fetchMembers(currentUserId); setShowMemberModal(true); } 
           },
           { label: '招待コードを表示', icon: <LuUserPlus />, onClick: () => setShowInviteModal(true) },
-          { label: 'このプロジェクトでの表示名変更', icon: <LuPenLine />, onClick: handleOpenNameModal }, // ✨ 関数を置き換え
+          { label: 'このプロジェクトでの表示名変更', icon: <LuPenLine />, onClick: handleOpenNameModal },
           { label: 'ログアウト', icon: <LuLogOut />, isDanger: true, onClick: () => { localStorage.removeItem('access_token'); navigate('/login'); } }
         ]} 
       />
@@ -273,6 +274,36 @@ export const ProjectMain: React.FC = () => {
       <div className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto pb-32">
         <div className="max-w-4xl mx-auto space-y-8">
           
+          {/* ✨ プロジェクト全体サマリー */}
+          <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl border border-blue-50 flex flex-col sm:flex-row items-center justify-between gap-6">
+            <div className="flex-1 w-full">
+              <div className="flex items-center gap-2 mb-2">
+                <LuTrophy className="text-yellow-500 w-5 h-5" />
+                <span className="text-sm font-black text-gray-400 uppercase tracking-[0.2em]">Project Overall</span>
+              </div>
+              <div className="flex items-end gap-3 mb-4">
+                <span className="text-5xl font-black text-blue-600 tracking-tighter">{totalProjectProgress}%</span>
+                <span className="text-sm font-bold text-gray-400 mb-2">完了</span>
+              </div>
+              <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden shadow-inner">
+                <div 
+                  className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-1000 ease-out" 
+                  style={{ width: `${totalProjectProgress}%` }}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4 w-full sm:w-auto">
+                <div className="bg-blue-50 p-4 rounded-3xl text-center border border-blue-100">
+                    <p className="text-[10px] font-black text-blue-400 uppercase mb-1">Total Tasks</p>
+                    <p className="text-xl font-black text-blue-700">{parentTasks.length}</p>
+                </div>
+                <div className="bg-emerald-50 p-4 rounded-3xl text-center border border-emerald-100">
+                    <p className="text-[10px] font-black text-emerald-400 uppercase mb-1">Completed</p>
+                    <p className="text-xl font-black text-emerald-700">{parentTasks.filter(t => t.progress === 100).length}</p>
+                </div>
+            </div>
+          </div>
+
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
             <h2 className="text-xl font-black mb-4 text-gray-800">新しいタスクを追加</h2>
             <form onSubmit={handleCreateParentTask} className="flex gap-3">
