@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  LuPlus, LuCircleCheck, LuCircle, LuTrash2, LuFilePlus, LuPenLine, LuInfo, LuCalendarDays, LuAlignLeft, LuUsers
+  LuPlus, LuCircleCheck, LuCircle, LuTrash2, LuFilePlus, LuPenLine, LuInfo, LuCalendarDays, LuAlignLeft, LuUsers, LuUserMinus
 } from "react-icons/lu";
 import { Header } from './Header';
 
@@ -125,10 +125,30 @@ export const TaskDetail: React.FC = () => {
     fetchTaskDetail();
   };
 
-  // ✨ ここを大改修！オプティミスティック更新を導入
+  // ✨ 【新規】タスクから退出する処理
+  const handleLeaveTask = async () => {
+    if (!window.confirm("このタスクの担当から外れますか？\n（あなたが入力した進捗データなどはリセットされます）")) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/tasks/leave`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ task_id: taskId })
+      });
+      
+      if (res.ok) {
+        alert("タスクから退出しました。");
+        fetchTaskDetail(); // 画面を再取得してボタンを「参加する」に戻す
+      } else {
+        alert("退出に失敗しました");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("通信エラーが発生しました");
+    }
+  };
+
   const handleProgressChange = async (value: number) => {
-    // 1. サーバーの応答を待たずに、画面のデータ（task）を直接新しい数値に書き換える！
-    // これにより、指を離した瞬間に古いデータに巻き戻るのを防ぎます。
     if (task) {
       const updatedAssignees = task.assignees.map(a => 
         a.id === currentUserId ? { ...a, progress: value } : a
@@ -137,14 +157,11 @@ export const TaskDetail: React.FC = () => {
     }
 
     try {
-      // 2. その裏でこっそりサーバーに最新の数値を送信する
       await fetch(`${API_BASE}/tasks/progress`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ task_id: taskId, progress: value })
       });
-      
-      // 3. 送信が成功したら、念のため最新のデータを再取得（全体の平均進捗などを正確に合わせるため）
       fetchTaskDetail(); 
     } catch (e) {
       console.error("進捗の保存に失敗しました", e);
@@ -262,6 +279,8 @@ export const TaskDetail: React.FC = () => {
         onBack={() => navigate(-1)}
         menuItems={[
           { label: 'タスクを編集する', icon: <LuPenLine />, onClick: openEditModal },
+          // ✨ 自分が参加している場合のみ「退出」ボタンをメニューに表示！
+          ...(isAssigned ? [{ label: 'このタスクから退出する', icon: <LuUserMinus />, isDanger: true, onClick: handleLeaveTask }] : []),
           { label: 'タスクを削除する', icon: <LuTrash2 />, isDanger: true, onClick: handleDeleteTask }
         ]} 
       />

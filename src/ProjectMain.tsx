@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Chat } from './Chat';
 import { 
   LuX, LuMessageSquare, LuUsers, LuUserPlus, LuPenLine, LuLogOut, LuCopy, LuChevronRight, 
-  LuPlus, LuFolderOpen, LuFile, LuCircleCheck, LuTrophy
+  LuPlus, LuFolderOpen, LuFile, LuCircleCheck, LuArrowDownUp, LuArrowDown, LuArrowUp, LuTrash2,
+  LuUserMinus, LuTrophy
 } from "react-icons/lu";
 import { Header } from './Header';
 
@@ -20,22 +21,35 @@ interface CommunityMember {
   created_at: string;
 }
 
+interface Assignee {
+  id: string;
+  display_name: string;
+}
+
 interface Task {
   id: string;
   title?: string;
   name?: string; 
   progress: number;
   status: string;
+  priority: string;
+  deadline: string | null;
+  createdAt?: string;
+  created_at?: string;
   parentId?: string | null;
   parent_task_id?: string | null; 
+  assignees?: Assignee[];
 }
+
+type SortKey = 'created_at' | 'deadline' | 'priority' | 'progress' | 'name';
+type SortOrder = 'asc' | 'desc';
 
 export const ProjectMain: React.FC = () => {
   const { id: communityId } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   const [currentUserId, setCurrentUserId] = useState<string>('');
-  const [myDisplayName, setMyDisplayName] = useState<string>('');
+  const [myDisplayName, setMyDisplayName] = useState<string>(''); 
 
   const [isLoading, setIsLoading] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -55,6 +69,12 @@ export const ProjectMain: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [isCreatingTask, setIsCreatingTask] = useState(false);
+
+  // フィルター・ソート機能用のState
+  const [sortKey, setSortKey] = useState<SortKey>('created_at');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [showOnlyMyTasks, setShowOnlyMyTasks] = useState(false);
+  const [hideCompleted, setHideCompleted] = useState(false);
 
   const fetchMembers = useCallback(async (userIdToFind: string) => {
     if (!communityId) return;
@@ -242,16 +262,121 @@ export const ProjectMain: React.FC = () => {
     }
   };
 
+  const handleDeleteProject = async () => {
+    if (!window.confirm("本当にこのプロジェクトを削除しますか？\n（すべてのタスクやチャット履歴が完全に消去され、元に戻せません！）")) return;
+
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(`${API_BASE}/community/delete?community_id=${communityId}`, {
+        method: 'DELETE',
+        headers: { 
+          'Authorization': `Bearer ${token}` 
+        }
+      });
+
+      if (res.ok) {
+        alert("プロジェクトを削除しました。");
+        navigate('/select-project');
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        alert(`削除に失敗しました: ${errorData.detail || '権限がありません'}`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("通信エラーが発生しました");
+    }
+  };
+
+  const handleLeaveProject = async () => {
+    if (!window.confirm("本当にこのプロジェクトから退出しますか？\n（担当しているタスクからは自動的に外れます。再度参加するには招待コードが必要です）")) return;
+
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(`${API_BASE}/community/leave`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ community_id: communityId })
+      });
+
+      if (res.ok) {
+        alert("プロジェクトから退出しました。");
+        navigate('/select-project');
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        alert(`退出に失敗しました: ${errorData.detail || 'エラー'}`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("通信エラーが発生しました");
+    }
+  };
+
+  const sortedParentTasks = useMemo(() => {
+    let parents = tasks.filter(t => !t.parentId && !t.parent_task_id);
+
+    parents = parents.filter(task => {
+      if (hideCompleted && task.progress === 100) return false;
+      
+      if (showOnlyMyTasks) {
+        const isAssignedToParent = task.assignees?.some(a => a.id === currentUserId);
+        const childTasks = tasks.filter(t => t.parentId === task.id || t.parent_task_id === task.id);
+        const isAssignedToAnyChild = childTasks.some(child => child.assignees?.some(a => a.id === currentUserId));
+        
+        if (!isAssignedToParent && !isAssignedToAnyChild) return false;
+      }
+
+      return true;
+    });
+    
+    return parents.sort((a, b) => {
+      let valA: number | string = 0;
+      let valB: number | string = 0;
+
+      switch (sortKey) {
+        case 'progress':
+          valA = a.progress;
+          valB = b.progress;
+          break;
+        case 'name':
+          valA = a.title || a.name || '';
+          valB = b.title || b.name || '';
+          break;
+        case 'priority': {
+          const pMap: Record<string, number> = { '大': 3, '中': 2, '小': 1 };
+          valA = pMap[a.priority] || 0;
+          valB = pMap[b.priority] || 0;
+          break;
+        }
+        case 'deadline':
+          valA = a.deadline ? new Date(a.deadline).getTime() : (sortOrder === 'asc' ? Infinity : -Infinity);
+          valB = b.deadline ? new Date(b.deadline).getTime() : (sortOrder === 'asc' ? Infinity : -Infinity);
+          break;
+        case 'created_at':
+        default:
+          valA = new Date(a.createdAt || a.created_at || 0).getTime();
+          valB = new Date(b.createdAt || b.created_at || 0).getTime();
+          break;
+      }
+
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [tasks, sortKey, sortOrder, showOnlyMyTasks, hideCompleted, currentUserId]);
+
+
   if (isLoading) return <div className="p-8 text-center text-gray-500 animate-pulse">読み込み中...</div>;
 
-  // ✨ 進捗計算ロジック
+  // 進捗計算ロジック
   const parentTasks = tasks.filter(t => !t.parentId && !t.parent_task_id);
   
-  // 親タスクの平均進捗率を算出（新しく追加された0%のタスクも分母に含まれる）
   const totalProjectProgress = parentTasks.length > 0 
     ? Math.round(parentTasks.reduce((acc, t) => acc + (t.progress || 0), 0) / parentTasks.length)
     : 0;
-  
+
   return (
     <div className="relative flex flex-col h-screen bg-gray-50 text-gray-900 font-sans overflow-hidden">
       
@@ -267,6 +392,8 @@ export const ProjectMain: React.FC = () => {
           },
           { label: '招待コードを表示', icon: <LuUserPlus />, onClick: () => setShowInviteModal(true) },
           { label: 'このプロジェクトでの表示名変更', icon: <LuPenLine />, onClick: handleOpenNameModal },
+          { label: 'プロジェクトから退出する', icon: <LuUserMinus />, isDanger: true, onClick: handleLeaveProject },
+          { label: 'プロジェクトを削除する', icon: <LuTrash2 />, isDanger: true, onClick: handleDeleteProject },
           { label: 'ログアウト', icon: <LuLogOut />, isDanger: true, onClick: () => { localStorage.removeItem('access_token'); navigate('/login'); } }
         ]} 
       />
@@ -274,7 +401,7 @@ export const ProjectMain: React.FC = () => {
       <div className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto pb-32">
         <div className="max-w-4xl mx-auto space-y-8">
           
-          {/* ✨ プロジェクト全体サマリー */}
+          {/* プロジェクト全体サマリー */}
           <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl border border-blue-50 flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="flex-1 w-full">
               <div className="flex items-center gap-2 mb-2">
@@ -326,72 +453,145 @@ export const ProjectMain: React.FC = () => {
           </div>
 
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-            <h2 className="text-xl font-black mb-6 text-gray-800 flex items-center justify-between">
-              <span>タスク一覧</span>
-              <span className="text-sm font-bold text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
-                全 {tasks.length} 件
-              </span>
-            </h2>
+            
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
+              
+              <h2 className="text-xl font-black text-gray-800 flex items-center gap-3">
+                <span>タスク一覧</span>
+                <span className="text-sm font-bold text-gray-400 bg-gray-100 px-3 py-1 rounded-full whitespace-nowrap">
+                  全 {sortedParentTasks.length} 件
+                </span>
+              </h2>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex bg-gray-50 p-1.5 rounded-2xl border border-gray-100">
+                  <button
+                    onClick={() => setShowOnlyMyTasks(!showOnlyMyTasks)}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all ${
+                      showOnlyMyTasks ? 'bg-blue-500 text-white shadow-md' : 'text-gray-500 hover:bg-gray-200'
+                    }`}
+                  >
+                    <LuUsers className="w-3.5 h-3.5" /> 自分のタスク
+                  </button>
+                  <button
+                    onClick={() => setHideCompleted(!hideCompleted)}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all ${
+                      hideCompleted ? 'bg-emerald-500 text-white shadow-md' : 'text-gray-500 hover:bg-gray-200'
+                    }`}
+                  >
+                    <LuCircleCheck className="w-3.5 h-3.5" /> 完了を非表示
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-2xl border border-gray-100">
+                  <div className="flex items-center pl-2 pr-1 text-gray-400">
+                    <LuArrowDownUp className="w-4 h-4" />
+                  </div>
+                  <select
+                    value={sortKey}
+                    onChange={(e) => setSortKey(e.target.value as SortKey)}
+                    className="bg-transparent text-sm font-bold text-gray-700 outline-none cursor-pointer py-1 pr-2"
+                  >
+                    <option value="created_at">追加日</option>
+                    <option value="deadline">期限日</option>
+                    <option value="priority">重要度</option>
+                    <option value="progress">進捗度</option>
+                    <option value="name">名前</option>
+                  </select>
+                  <button
+                    onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                    className="p-1.5 bg-white rounded-xl shadow-sm border border-gray-200 hover:bg-gray-50 text-gray-600 transition flex items-center justify-center w-8 h-8"
+                    title={sortOrder === 'asc' ? "昇順 (小さい順/古い順)" : "降順 (大きい順/新しい順)"}
+                  >
+                    {sortOrder === 'asc' ? <LuArrowUp className="w-4 h-4" /> : <LuArrowDown className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            </div>
 
             <div className="space-y-4">
-              {parentTasks.length === 0 ? (
+              {sortedParentTasks.length === 0 ? (
                 <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-2xl">
-                  <p className="text-gray-400 font-bold">まだタスクがありません</p>
-                  <p className="text-xs text-gray-400 mt-1">上のフォームから最初のタスクを追加しましょう！</p>
+                  <p className="text-gray-400 font-bold">表示できるタスクがありません</p>
+                  <p className="text-xs text-gray-400 mt-1">フィルターを解除するか、新しいタスクを追加してください</p>
                 </div>
               ) : (
-                parentTasks.map(parentTask => {
+                sortedParentTasks.map(parentTask => {
                   const childTasks = tasks.filter(t => t.parentId === parentTask.id || t.parent_task_id === parentTask.id);
+                  const isCompleted = parentTask.progress === 100;
                   
                   return (
-                    <div key={parentTask.id} className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+                    <div key={parentTask.id} className={`rounded-2xl border overflow-hidden transition-all ${isCompleted ? 'bg-emerald-50/30 border-emerald-200' : 'bg-gray-50 border-gray-200'}`}>
                       <div 
                         onClick={() => navigate(`/project/${communityId}/task/${parentTask.id}`)}
-                        className="p-4 bg-white hover:bg-blue-50 cursor-pointer transition flex items-center gap-4 group"
+                        className={`p-4 bg-white cursor-pointer transition flex items-center gap-4 group ${isCompleted ? 'hover:bg-emerald-50' : 'hover:bg-blue-50'}`}
                       >
-                        <LuFolderOpen className="w-6 h-6 text-blue-500 flex-shrink-0" />
+                        <LuFolderOpen className={`w-6 h-6 flex-shrink-0 ${isCompleted ? 'text-emerald-500' : 'text-blue-500'}`} />
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-extrabold text-gray-800 truncate text-lg group-hover:text-blue-700 transition-colors">
-                            {parentTask.title || parentTask.name}
-                          </h3>
+                          <div className="flex items-center gap-2">
+                            <h3 className={`font-extrabold truncate text-lg transition-colors ${isCompleted ? 'text-emerald-800' : 'text-gray-800 group-hover:text-blue-700'}`}>
+                              {parentTask.title || parentTask.name}
+                            </h3>
+                            {isCompleted && (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-black tracking-widest bg-emerald-500 text-white shadow-sm flex items-center gap-1">
+                                👑 COMPLETE!
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-3 mt-2">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-100 px-2 py-0.5 rounded-md">
+                            <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md ${isCompleted ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
                               {parentTask.status}
                             </span>
-                            <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                              <div className="h-full bg-blue-500" style={{ width: `${parentTask.progress}%` }} />
+                            <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${isCompleted ? 'bg-emerald-100' : 'bg-gray-100'}`}>
+                              <div className={`h-full ${isCompleted ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${parentTask.progress}%` }} />
                             </div>
-                            <span className="text-xs font-black text-blue-600 w-8 text-right">{parentTask.progress}%</span>
+                            <span className={`text-xs font-black w-8 text-right ${isCompleted ? 'text-emerald-600' : 'text-blue-600'}`}>{parentTask.progress}%</span>
                           </div>
                         </div>
                       </div>
 
                       {childTasks.length > 0 && (
-                        <div className="p-3 bg-gray-50/50 border-t border-gray-200 space-y-2 pl-6 sm:pl-12">
-                          {childTasks.map(childTask => (
-                            <div 
-                              key={childTask.id}
-                              onClick={() => navigate(`/project/${communityId}/task/${childTask.id}`)}
-                              className="p-3 bg-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-sm cursor-pointer transition flex items-center gap-3 group"
-                            >
-                              {childTask.progress === 100 ? (
-                                <LuCircleCheck className="w-5 h-5 text-emerald-500 flex-shrink-0" />
-                              ) : (
-                                <LuFile className="w-5 h-5 text-gray-400 flex-shrink-0 group-hover:text-blue-400" />
-                              )}
-                              <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                <h4 className="font-bold text-sm text-gray-700 truncate group-hover:text-blue-600 transition-colors">
-                                  {childTask.title || childTask.name}
-                                </h4>
-                                <div className="flex items-center gap-2 w-full sm:w-1/3">
-                                  <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                    <div className={`h-full ${childTask.progress === 100 ? 'bg-emerald-400' : 'bg-blue-400'}`} style={{ width: `${childTask.progress}%` }} />
+                        <div className={`p-3 border-t space-y-2 pl-6 sm:pl-12 ${isCompleted ? 'bg-emerald-50/50 border-emerald-100' : 'bg-gray-50/50 border-gray-200'}`}>
+                          {childTasks.map(childTask => {
+                            const isMyChild = childTask.assignees?.some(a => a.id === currentUserId);
+                            const childCompleted = childTask.progress === 100;
+
+                            if (hideCompleted && childCompleted) return null;
+                            if (showOnlyMyTasks && !isMyChild) return null;
+
+                            return (
+                              <div 
+                                key={childTask.id}
+                                onClick={() => navigate(`/project/${communityId}/task/${childTask.id}`)}
+                                className={`p-3 bg-white rounded-xl border cursor-pointer transition flex items-center gap-3 group ${
+                                  childCompleted ? 'border-emerald-200 hover:border-emerald-400' : 
+                                  (showOnlyMyTasks && isMyChild) ? 'border-blue-300 shadow-sm' : 'border-gray-200 hover:border-blue-300'
+                                }`}
+                              >
+                                {childCompleted ? (
+                                  <LuCircleCheck className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                                ) : (
+                                  <LuFile className="w-5 h-5 text-gray-400 flex-shrink-0 group-hover:text-blue-400" />
+                                )}
+                                <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <h4 className={`font-bold text-sm truncate transition-colors ${
+                                      childCompleted ? 'text-emerald-700' : 'text-gray-700 group-hover:text-blue-600'
+                                    }`}>
+                                      {childTask.title || childTask.name}
+                                    </h4>
+                                    {childCompleted && <span className="text-[10px] font-black text-emerald-500 bg-emerald-50 px-1.5 rounded">DONE</span>}
                                   </div>
-                                  <span className="text-[10px] font-black text-gray-500 w-6 text-right">{childTask.progress}%</span>
+                                  <div className="flex items-center gap-2 w-full sm:w-1/3">
+                                    <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                      <div className={`h-full ${childCompleted ? 'bg-emerald-400' : 'bg-blue-400'}`} style={{ width: `${childTask.progress}%` }} />
+                                    </div>
+                                    <span className={`text-[10px] font-black w-6 text-right ${childCompleted ? 'text-emerald-500' : 'text-gray-500'}`}>{childTask.progress}%</span>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>
