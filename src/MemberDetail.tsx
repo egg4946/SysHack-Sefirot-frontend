@@ -49,8 +49,8 @@ export const MemberDetail: React.FC = () => {
   const fetchMemberDetail = useCallback(async () => {
     if (!communityId || !userId) return;
     try {
-      const res = await fetch(`${API_BASE}/community/member/detail?community_id=${communityId}&user_id=${userId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const res = await fetch(`${API_BASE}/member/detail?community_id=${communityId}&user_id=${userId}`, {
+       headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
