@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
-  LuPlus, LuCircleCheck, LuCircle, LuTrash2, LuFilePlus, LuPenLine, LuInfo, LuCalendarDays, LuAlignLeft, LuUsers
-} from "react-icons/lu";
+  LuPlus, LuCircleCheck, LuCircle, LuTrash2, LuFilePlus, LuPenLine, LuInfo, LuCalendarDays, LuAlignLeft, LuUsers, LuPlay
+} from "react-icons/lu"; // ✨ LuPlayCircle を LuPlay に修正
 import { Header } from './Header';
 
 interface UserCommunity { id: string; name: string; }
@@ -145,24 +145,43 @@ export const TaskDetail: React.FC = () => {
     fetchTaskDetail();
   };
 
+  // ✨ 進捗バーの操作に連動してステータスを自動計算・保存する
   const handleProgressChange = async (value: number) => {
-    if (task) {
-      const updatedAssignees = task.assignees.map(a => 
-        a.id === currentUserId ? { ...a, progress: value } : a
-      );
-      setTask({ ...task, assignees: updatedAssignees });
-    }
+    if (!task) return;
+
+    // 数値に基づいてステータスを自動決定
+    let autoStatus: '未着手' | '進行中' | '完了' = '進行中';
+    if (value === 0) autoStatus = '未着手';
+    else if (value === 100) autoStatus = '完了';
+
+    // UIを即座に更新（楽観的アップデート）
+    const updatedAssignees = task.assignees.map(a => 
+      a.id === currentUserId ? { ...a, progress: value } : a
+    );
+    setTask({ ...task, assignees: updatedAssignees, status: autoStatus });
 
     try {
-      await fetch(`${API_BASE}/tasks/progress`, {
+      // 1. 進捗の更新
+      const pRes = await fetch(`${API_BASE}/tasks/progress`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ task_id: taskId, progress: value })
       });
+
+      // 2. ステータスの自動同期更新
+      const sRes = await fetch(`${API_BASE}/tasks/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ task_id: taskId, status: autoStatus })
+      });
       
-      fetchTaskDetail(); 
+      if (!pRes.ok || !sRes.ok) throw new Error('Sync failed');
+
+      fetchTaskDetail(); // 最新の状態を取得
     } catch (e) {
-      console.error("進捗の保存に失敗しました", e);
+      console.error(e);
+      alert("保存に失敗しました。");
+      fetchTaskDetail();
     }
   };
 
@@ -210,20 +229,6 @@ export const TaskDetail: React.FC = () => {
       alert("通信エラーが発生しました");
     } finally {
       setIsCreatingChild(false);
-    }
-  };
-
-  const handleStatusChange = async (newStatus: string) => {
-    try {
-      const res = await fetch(`${API_BASE}/tasks/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ task_id: taskId, status: newStatus })
-      });
-      if (res.ok) fetchTaskDetail();
-      else alert('ステータスの更新に失敗しました');
-    } catch (e) {
-      console.error(e);
     }
   };
 
@@ -282,19 +287,18 @@ export const TaskDetail: React.FC = () => {
           <div className="flex-1">
             <h2 className="text-2xl font-black text-gray-900 mb-2">{task.name}</h2>
             <div className="flex flex-wrap items-center gap-3 mt-3">
-              <select 
-                value={task.status}
-                onChange={(e) => handleStatusChange(e.target.value)}
-                className={`px-3 py-1.5 rounded-xl text-sm font-black tracking-widest outline-none cursor-pointer border-2 transition ${
-                  task.status === '完了' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 focus:border-emerald-500' :
-                  task.status === '進行中' ? 'bg-orange-50 text-orange-700 border-orange-200 focus:border-orange-500' :
-                  'bg-gray-50 text-gray-600 border-gray-200 focus:border-gray-500'
-                }`}
-              >
-                <option value="未着手">未着手</option>
-                <option value="進行中">進行中</option>
-                <option value="完了">完了</option>
-              </select>
+              
+              {/* ✨ 自動ステータスバッジ（読み取り専用） */}
+              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-black tracking-widest border-2 transition ${
+                  task.status === '完了' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                  task.status === '進行中' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                  'bg-gray-50 text-gray-600 border-gray-200'
+                }`}>
+                {task.status === '完了' ? <LuCircleCheck className="w-4 h-4" /> : 
+                 task.status === '進行中' ? <LuPlay className="w-4 h-4" /> : 
+                 <LuCircle className="w-4 h-4" />}
+                {task.status}
+              </div>
 
               <span className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${
                 task.priority === '大' ? 'bg-red-50 text-red-600' : task.priority === '中' ? 'bg-yellow-50 text-yellow-700' : 'bg-blue-50 text-blue-600'
@@ -370,6 +374,8 @@ export const TaskDetail: React.FC = () => {
               </button>
               <span className="text-4xl font-black text-blue-600">{localProgress}%</span>
             </div>
+            
+            {/* ✨ 進捗バーの操作のみでステータスが確定する */}
             <input 
               type="range" 
               min="0" max="100" 
