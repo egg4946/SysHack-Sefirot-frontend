@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   LuUserMinus, LuCircleCheck, LuClock, LuCircle, LuListTodo, 
-  LuCalendarDays, LuInfo 
+  LuCalendarDays, LuInfo, LuFilter, LuArrowUpDown
 } from "react-icons/lu";
 import { Header } from './Header';
 import toast from 'react-hot-toast';
@@ -39,6 +39,11 @@ export const MemberDetail: React.FC = () => {
 
   const [detailData, setDetailData] = useState<MemberDetailData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // フィルターとソートのState
+  const [filterStatus, setFilterStatus] = useState<string>('すべて');
+  const [filterPriority, setFilterPriority] = useState<string>('すべて');
+  const [sortBy, setSortBy] = useState<string>('default');
 
   // 日付を綺麗にフォーマットする関数（例：2026/03/29）
   const formatDate = (dateString: string | null) => {
@@ -94,6 +99,49 @@ export const MemberDetail: React.FC = () => {
       toast.error("通信エラーが発生しました。");
     }
   };
+
+  // ✨ フィルターとソートを適用したタスク一覧
+  const filteredAndSortedTasks = useMemo(() => {
+    if (!detailData) return [];
+    
+    let tasks = [...detailData.tasks];
+
+    // ステータスフィルター
+    if (filterStatus !== 'すべて') {
+      tasks = tasks.filter(task => task.status === filterStatus);
+    }
+
+    // 優先度フィルター
+    if (filterPriority !== 'すべて') {
+      tasks = tasks.filter(task => task.priority === filterPriority);
+    }
+
+    // ソート処理
+    switch (sortBy) {
+      case 'deadline_asc':
+        tasks.sort((a, b) => {
+          if (!a.deadline) return 1;
+          if (!b.deadline) return -1;
+          return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+        });
+        break;
+      case 'priority_desc': {
+        const pWeight: Record<string, number> = { '大': 3, '中': 2, '小': 1 };
+        tasks.sort((a, b) => (pWeight[b.priority] || 0) - (pWeight[a.priority] || 0));
+        break;
+      }
+      case 'progress_asc':
+        tasks.sort((a, b) => a.personal_progress - b.personal_progress);
+        break;
+      case 'progress_desc':
+        tasks.sort((a, b) => b.personal_progress - a.personal_progress);
+        break;
+      default:
+        break;
+    }
+
+    return tasks;
+  }, [detailData, filterStatus, filterPriority, sortBy]);
 
   // ✨ プロ仕様のスケルトンローディング
   if (loading) {
@@ -175,10 +223,59 @@ export const MemberDetail: React.FC = () => {
 
         {/* ✨ 担当タスク一覧セクション */}
         <section>
-          <h3 className="text-lg font-black text-gray-900 mb-4 px-2">担当中のタスク</h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 px-2">
+            <h3 className="text-lg font-black text-gray-900">担当中のタスク</h3>
+
+            {/* フィルター & ソート UI */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center bg-white border border-gray-200 rounded-lg px-3 py-1.5 shadow-sm">
+                <LuFilter className="w-4 h-4 text-gray-400 mr-2" />
+                <select 
+                  className="bg-transparent text-sm font-bold text-gray-700 outline-none cursor-pointer"
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                >
+                  <option value="すべて">全ステータス</option>
+                  <option value="未着手">未着手</option>
+                  <option value="進行中">進行中</option>
+                  <option value="完了">完了</option>
+                </select>
+              </div>
+
+              <div className="flex items-center bg-white border border-gray-200 rounded-lg px-3 py-1.5 shadow-sm">
+                <LuFilter className="w-4 h-4 text-gray-400 mr-2" />
+                <select 
+                  className="bg-transparent text-sm font-bold text-gray-700 outline-none cursor-pointer"
+                  value={filterPriority}
+                  onChange={(e) => setFilterPriority(e.target.value)}
+                >
+                  <option value="すべて">全優先度</option>
+                  <option value="大">優先度: 大</option>
+                  <option value="中">優先度: 中</option>
+                  <option value="小">優先度: 小</option>
+                </select>
+              </div>
+
+              <div className="flex items-center bg-white border border-gray-200 rounded-lg px-3 py-1.5 shadow-sm">
+                <LuArrowUpDown className="w-4 h-4 text-gray-400 mr-2" />
+                <select 
+                  className="bg-transparent text-sm font-bold text-gray-700 outline-none cursor-pointer"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                >
+                  <option value="default">デフォルト順</option>
+                  <option value="deadline_asc">期限が近い順</option>
+                  <option value="priority_desc">優先度が高い順</option>
+                  <option value="progress_desc">進捗が高い順</option>
+                  <option value="progress_asc">進捗が低い順</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-4">
-            {detailData.tasks.length > 0 ? (
-              detailData.tasks.map(task => (
+            {filteredAndSortedTasks.length > 0 ? (
+              filteredAndSortedTasks.map(task => (
                 <div 
                   key={task.task_id} 
                   onClick={() => navigate(`/project/${communityId}/task/${task.task_id}`)}
@@ -243,8 +340,8 @@ export const MemberDetail: React.FC = () => {
             ) : (
               <div className="text-center py-16 bg-white rounded-3xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center">
                 <LuListTodo className="w-12 h-12 text-gray-300 mb-4" />
-                <p className="text-gray-500 font-bold">現在担当しているタスクはありません</p>
-                <p className="text-xs text-gray-400 mt-2">タスクがアサインされるとここに表示されます</p>
+                <p className="text-gray-500 font-bold">条件に一致するタスクはありません</p>
+                <p className="text-xs text-gray-400 mt-2">フィルター条件を変更してみてください</p>
               </div>
             )}
           </div>
