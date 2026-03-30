@@ -1,19 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom'; // ✨ 追加
 import { LuMenu, LuX, LuChevronLeft } from 'react-icons/lu';
+import logo from './assets/logo.png'; // ✨ ロゴ画像をインポート
 
-// メニュー項目の型定義（呼び出す側の画面から渡されます）
+// メニュー項目の型定義
 export interface MenuItem {
   label: string;
   icon?: React.ReactNode;
   onClick: () => void;
-  isDanger?: boolean; // trueにすると文字が赤くなる（ログアウトやキック用）
+  isDanger?: boolean;
 }
 
 interface HeaderProps {
-  title: string;                  // 中央に表示するタイトル
-  showBackButton?: boolean;       // 左側の「戻る」ボタンを表示するかどうか
-  onBack?: () => void;            // 「戻る」ボタンを押した時の処理
-  menuItems?: MenuItem[];         // 右側のハンバーガーメニューの中身（配列）
+  title: string;
+  showBackButton?: boolean;
+  onBack?: () => void;
+  menuItems?: MenuItem[];
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -24,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate(); // ✨ 追加
 
   // メニューの外側をタップした時に自動で閉じる処理
   useEffect(() => {
@@ -39,8 +42,8 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="relative flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200 shadow-sm z-40 h-14">
       
-      {/* 1. 左エリア：戻るボタン or アプリアイコン */}
-      <div className="w-12 flex items-center justify-start">
+      {/* 1. 左エリア：戻るボタン or ロゴ画像 */}
+      <div className="flex items-center justify-start min-w-[3rem]">
         {showBackButton ? (
           <button 
             onClick={onBack}
@@ -49,13 +52,20 @@ export const Header: React.FC<HeaderProps> = ({
             <LuChevronLeft className="w-6 h-6" />
           </button>
         ) : (
-          <span className="font-black text-xl tracking-tight text-blue-600 hidden sm:block">
-            Sefirot
-          </span>
+          /* ✨ Sefirotの文字をロゴ画像と「進捗の樹」に変更 */
+          <div 
+            className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition active:scale-95"
+            onClick={() => navigate('/select-project')}
+          >
+            <img src={logo} alt="ロゴ" className="w-8 h-8 object-contain" />
+            <span className="font-black text-lg tracking-tighter text-blue-600 hidden sm:block">
+              進捗の樹
+            </span>
+          </div>
         )}
       </div>
 
-      {/* 2. 中央エリア：タイトル（長すぎる場合は省略） */}
+      {/* 2. 中央エリア：タイトル */}
       <div className="flex-1 text-center truncate px-2">
         <h1 className="text-base sm:text-lg font-bold text-gray-900 truncate">
           {title}
@@ -80,8 +90,8 @@ export const Header: React.FC<HeaderProps> = ({
                   <button 
                     key={index}
                     onClick={() => {
-                      setIsMenuOpen(false); // 押したらメニューを閉じる
-                      item.onClick();       // 渡された処理を実行
+                      setIsMenuOpen(false);
+                      item.onClick();
                     }}
                     className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition hover:bg-gray-50 ${
                       item.isDanger ? 'text-red-600 hover:text-red-700' : 'text-gray-700'

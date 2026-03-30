@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LuNetwork, LuMessageSquare, LuMousePointerClick, LuArrowRight } from "react-icons/lu";
+import logo from './assets/logo.png'; // ✨ 1. ここでロゴ画像を読み込む
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
@@ -9,8 +10,9 @@ export const Home: React.FC = () => {
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans overflow-hidden relative">
       
       <nav className="relative z-10 max-w-6xl mx-auto px-6 py-6 flex justify-between items-center">
-        <div className="text-3xl font-black text-blue-600 tracking-tighter flex items-center gap-2">
-          <LuNetwork className="w-8 h-8" />
+        <div className="text-3xl font-black text-blue-600 tracking-tighter flex items-center gap-3">
+          {/* ✨ 2. アイコンを img タグ（logo.png）に差し替え！ */}
+          <img src={logo} alt="進捗の樹 ロゴ" className="w-10 h-10 object-contain drop-shadow-sm hover:scale-110 transition-transform cursor-pointer" />
           進捗の樹
         </div>
       </nav>
@@ -37,7 +39,6 @@ export const Home: React.FC = () => {
           「進捗の樹」は、親タスクと子タスクの進捗が自動で連動する、次世代のタスク管理ツールです。誰がどこまで終わらせたか、リアルタイムで可視化します。
         </p>
 
-        {/* ✨ 飛び先を /login に変更しました！ */}
         <button 
           onClick={() => navigate('/login')}
           className="group relative inline-flex items-center justify-center gap-3 px-8 py-5 text-lg font-black text-white bg-blue-600 rounded-[2rem] overflow-hidden shadow-2xl shadow-blue-500/30 hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all duration-300"
