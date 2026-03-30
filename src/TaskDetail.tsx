@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  LuPlus, LuCircleCheck, LuCircle, LuTrash2, LuFilePlus, LuPenLine, LuInfo, LuCalendarDays, LuAlignLeft, LuUsers, LuUserMinus
+  LuPlus, LuCircleCheck, LuCircle, LuTrash2, LuFilePlus, LuPenLine, LuInfo, LuCalendarDays, LuAlignLeft, LuUsers, LuUserMinus,
+  LuFolderOpen
 } from "react-icons/lu";
 import { Header } from './Header';
 
@@ -46,6 +47,7 @@ export const TaskDetail: React.FC = () => {
   const token = localStorage.getItem('access_token');
 
   const [task, setTask] = useState<Task | null>(null);
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
@@ -76,6 +78,7 @@ export const TaskDetail: React.FC = () => {
 
       if (taskRes.ok) {
         const data = (await taskRes.json()) as Task[];
+        setAllTasks(data);
         const currentTask = data.find((t: Task) => t.id === taskId);
         if (currentTask) setTask(currentTask);
       }
@@ -125,7 +128,6 @@ export const TaskDetail: React.FC = () => {
     fetchTaskDetail();
   };
 
-  // ✨ 【新規】タスクから退出する処理
   const handleLeaveTask = async () => {
     if (!window.confirm("このタスクの担当から外れますか？\n（あなたが入力した進捗データなどはリセットされます）")) return;
 
@@ -138,7 +140,7 @@ export const TaskDetail: React.FC = () => {
       
       if (res.ok) {
         alert("タスクから退出しました。");
-        fetchTaskDetail(); // 画面を再取得してボタンを「参加する」に戻す
+        fetchTaskDetail();
       } else {
         alert("退出に失敗しました");
       }
@@ -205,7 +207,8 @@ export const TaskDetail: React.FC = () => {
       });
       if (res.ok) {
         alert('子タスクを追加しました！');
-        navigate(`/project/${communityId}`);
+        fetchTaskDetail();
+        setNewChildTaskName('');
       } else alert(`作成に失敗しました`);
     } catch (error) {
       console.error(error);
@@ -270,6 +273,9 @@ export const TaskDetail: React.FC = () => {
   const isAssigned = task.assignees.some(a => a.id === currentUserId);
   const myData = task.assignees.find(a => a.id === currentUserId);
 
+  // 子タスクを抽出
+  const childTasks = allTasks.filter(t => t.parent_task_id === taskId);
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
       
@@ -279,7 +285,6 @@ export const TaskDetail: React.FC = () => {
         onBack={() => navigate(-1)}
         menuItems={[
           { label: 'タスクを編集する', icon: <LuPenLine />, onClick: openEditModal },
-          // ✨ 自分が参加している場合のみ「退出」ボタンをメニューに表示！
           ...(isAssigned ? [{ label: 'このタスクから退出する', icon: <LuUserMinus />, isDanger: true, onClick: handleLeaveTask }] : []),
           { label: 'タスクを削除する', icon: <LuTrash2 />, isDanger: true, onClick: handleDeleteTask }
         ]} 
@@ -363,6 +368,33 @@ export const TaskDetail: React.FC = () => {
             )}
           </div>
         </section>
+
+        {/* ✨ 修正ポイント: 親タスクであり、かつ子タスクが「1つ以上ある場合のみ」このセクションを表示 */}
+        {task.parent_task_id === null && childTasks.length > 0 && (
+          <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
+            <div className="flex items-center gap-2 mb-6 border-b pb-4">
+              <LuFolderOpen className="w-6 h-6 text-emerald-500" />
+              <h3 className="text-xl font-black text-gray-800 tracking-tight">この樹の枝（子タスク）</h3>
+            </div>
+            <div className="space-y-3">
+              {childTasks.map(child => (
+                <div 
+                  key={child.id}
+                  onClick={() => navigate(`/project/${communityId}/task/${child.id}`)}
+                  className="p-4 bg-gray-50 rounded-2xl flex items-center justify-between hover:bg-emerald-50 cursor-pointer transition border border-transparent hover:border-emerald-200 group"
+                >
+                  <span className="font-bold text-gray-700 group-hover:text-emerald-700">{child.name}</span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-emerald-500" style={{ width: `${child.progress}%` }} />
+                    </div>
+                    <span className="text-xs font-black text-emerald-600 w-8 text-right">{child.progress}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {!isAssigned ? (
           <button onClick={handleJoinTask} className="w-full py-6 bg-gradient-to-r from-blue-600 to-green-400 text-white rounded-3xl font-black text-xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
