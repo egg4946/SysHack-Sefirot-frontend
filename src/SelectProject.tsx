@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LuPlus, LuLogIn, LuLogOut, LuFolderOpen, LuX, LuUser, LuArrowRight } from 'react-icons/lu';
 import { Header } from './Header';
+import toast from 'react-hot-toast';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
@@ -98,11 +99,11 @@ const SelectProject: React.FC = () => {
         navigate(`/project/${data.id}`); // 作成したらそのままプロジェクトへ！
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(`作成に失敗しました: ${err.detail || 'エラー'}`);
+        toast.error(`作成に失敗しました: ${err.detail || 'エラー'}`);
       }
     } catch (e) {
       console.error(e);
-      alert('通信エラーが発生しました');
+      toast.error('通信エラーが発生しました');
     } finally {
       setIsSubmitting(false);
     }
@@ -135,11 +136,11 @@ const SelectProject: React.FC = () => {
         navigate(`/project/${data.id}`); // 参加したらそのままプロジェクトへ！
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(`参加に失敗しました: ${err.detail || '招待コードが間違っています'}`);
+        toast.error(`参加に失敗しました: ${err.detail || '招待コードが間違っています'}`);
       }
     } catch (e) {
       console.error(e);
-      alert('通信エラーが発生しました');
+      toast.error('通信エラーが発生しました');
     } finally {
       setIsSubmitting(false);
     }

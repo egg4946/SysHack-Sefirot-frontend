@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -42,6 +43,7 @@ const Login: React.FC = () => {
       navigate('/select-project');
     } catch (err) {
       setError(err instanceof Error ? err.message : '通信エラーが発生しました');
+      toast.error("通信エラーが発生しました");
     } finally {
       setLoading(false);
     }
