@@ -118,3 +118,59 @@ code {
   -ms-overflow-style: none;  /* IE, Edge */
   scrollbar-width: none;     /* Firefox */
 }
+
+/* ✨ ひよこスライダー用カスタムスタイル ✨ */
+.hiyoko-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+}
+
+.hiyoko-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 56px; /* ひよこの横幅 */
+  height: 56px; /* ひよこの縦幅 */
+  background-image: var(--thumb-img);
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+  margin-top: -22px; /* バーの中央にひよこが来るように調整 */
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.15)); /* ひよこに影をつける */
+  transition: transform 0.1s;
+}
+
+/* つかんでいる時はひよこが少し大きくなる！ */
+.hiyoko-slider:active::-webkit-slider-thumb {
+  transform: scale(1.1);
+}
+
+.hiyoko-slider::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  background: transparent;
+}
+
+/* Firefox用の設定 */
+.hiyoko-slider::-moz-range-thumb {
+  width: 56px;
+  height: 56px;
+  background-image: var(--thumb-img);
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.15));
+}
+.hiyoko-slider::-moz-range-track {
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  background: transparent;
+}
