@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
-  LuPlus, LuCircleCheck, LuCircle, LuTrash2, LuFilePlus, LuPenLine, LuInfo, LuCalendarDays, LuAlignLeft, LuUsers, LuPlay
-} from "react-icons/lu"; // ✨ LuPlayCircle を LuPlay に修正
+  LuPlus, LuCircleCheck, LuCircle, LuTrash2, LuFilePlus, LuPenLine, LuInfo, LuCalendarDays, LuAlignLeft, LuUsers, LuUserMinus,
+  LuFolderOpen, LuUserPlus, LuX, LuChevronRight, LuPlay
+} from "react-icons/lu";
 import { Header } from './Header';
 
 interface UserCommunity { id: string; name: string; }
@@ -22,6 +23,12 @@ interface ChecklistItem {
   id: string;
   content: string;
   is_completed: boolean;
+}
+
+interface CommunityMember {
+  id: string; 
+  email: string;
+  display_name: string;
 }
 
 interface Task {
@@ -47,6 +54,8 @@ export const TaskDetail: React.FC = () => {
   const token = localStorage.getItem('access_token');
 
   const [task, setTask] = useState<Task | null>(null);
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
+  const [members, setMembers] = useState<CommunityMember[]>([]); 
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
@@ -57,12 +66,12 @@ export const TaskDetail: React.FC = () => {
   const [isCreatingChild, setIsCreatingChild] = useState(false);
 
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false); 
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editPriority, setEditPriority] = useState<'大' | '中' | '小'>('中');
   const [editDeadline, setEditDeadline] = useState('');
 
-  // 編集モーダルを開く関数（ステートへの反映含む）
   const openEditModal = useCallback((targetTask: Task) => {
     setEditName(targetTask.name);
     setEditDesc(targetTask.description || '');
@@ -74,9 +83,10 @@ export const TaskDetail: React.FC = () => {
   const fetchTaskDetail = useCallback(async () => {
     if (!communityId || !taskId) return;
     try {
-      const [meRes, taskRes] = await Promise.all([
+      const [meRes, tasksRes, membersRes] = await Promise.all([
         fetch(`${API_BASE}/me`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${API_BASE}/tasks?community_id=${communityId}`, { headers: { 'Authorization': `Bearer ${token}` } })
+        fetch(`${API_BASE}/tasks?community_id=${communityId}`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_BASE}/community/members?community_id=${communityId}`, { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
 
       if (meRes.ok) {
@@ -84,20 +94,23 @@ export const TaskDetail: React.FC = () => {
         setCurrentUserId(meData.user_data.id);
       }
 
-      if (taskRes.ok) {
-        const data = (await taskRes.json()) as Task[];
+      if (tasksRes.ok) {
+        const data = (await tasksRes.json()) as Task[];
+        setAllTasks(data);
         const currentTask = data.find((t: Task) => t.id === taskId);
         if (currentTask) {
           setTask(currentTask);
-          
-          // ✨ データ取得直後にクエリパラメータを確認してモーダルを開く
           const queryParams = new URLSearchParams(location.search);
           if (queryParams.get('edit') === 'true') {
             openEditModal(currentTask);
-            // URLを綺麗にする（replace: true で履歴を汚さない）
             navigate(location.pathname, { replace: true });
           }
         }
+      }
+
+      if (membersRes.ok) {
+        const membersData = await membersRes.json();
+        setMembers(membersData);
       }
     } catch (e) {
       console.error("データの取得に失敗しました", e);
@@ -145,30 +158,65 @@ export const TaskDetail: React.FC = () => {
     fetchTaskDetail();
   };
 
-  // ✨ 進捗バーの操作に連動してステータスを自動計算・保存する
+  const handleAssignMember = async (userId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/tasks/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ task_id: taskId, user_id: userId })
+      });
+      if (res.ok) {
+        setShowAssignModal(false);
+        fetchTaskDetail();
+      } else {
+        alert("アサインに失敗しました");
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleLeaveTask = async () => {
+    if (!window.confirm("このタスクの担当から外れますか？\n（あなたが入力した進捗データなどはリセットされます）")) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/tasks/leave`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ task_id: taskId })
+      });
+      
+      if (res.ok) {
+        alert("タスクから退出しました。");
+        fetchTaskDetail();
+      } else {
+        alert("退出に失敗しました");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("通信エラーが発生しました");
+    }
+  };
+
   const handleProgressChange = async (value: number) => {
     if (!task) return;
 
-    // 数値に基づいてステータスを自動決定
     let autoStatus: '未着手' | '進行中' | '完了' = '進行中';
     if (value === 0) autoStatus = '未着手';
     else if (value === 100) autoStatus = '完了';
 
-    // UIを即座に更新（楽観的アップデート）
     const updatedAssignees = task.assignees.map(a => 
       a.id === currentUserId ? { ...a, progress: value } : a
     );
     setTask({ ...task, assignees: updatedAssignees, status: autoStatus });
 
     try {
-      // 1. 進捗の更新
       const pRes = await fetch(`${API_BASE}/tasks/progress`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ task_id: taskId, progress: value })
       });
 
-      // 2. ステータスの自動同期更新
       const sRes = await fetch(`${API_BASE}/tasks/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -176,8 +224,7 @@ export const TaskDetail: React.FC = () => {
       });
       
       if (!pRes.ok || !sRes.ok) throw new Error('Sync failed');
-
-      fetchTaskDetail(); // 最新の状態を取得
+      fetchTaskDetail();
     } catch (e) {
       console.error(e);
       alert("保存に失敗しました。");
@@ -222,7 +269,8 @@ export const TaskDetail: React.FC = () => {
       });
       if (res.ok) {
         alert('子タスクを追加しました！');
-        navigate(`/project/${communityId}`);
+        fetchTaskDetail();
+        setNewChildTaskName('');
       } else alert(`作成に失敗しました`);
     } catch (error) {
       console.error(error);
@@ -258,7 +306,6 @@ export const TaskDetail: React.FC = () => {
     }
   };
 
-  // 手動呼び出し用のラッパー（Headerから利用）
   const onManualOpenEditModal = () => {
     if (task) openEditModal(task);
   };
@@ -267,6 +314,8 @@ export const TaskDetail: React.FC = () => {
 
   const isAssigned = task.assignees.some(a => a.id === currentUserId);
   const myData = task.assignees.find(a => a.id === currentUserId);
+  const childTasks = allTasks.filter(t => t.parent_task_id === taskId);
+  const unassignedMembers = members.filter(m => !task.assignees.some(a => a.id === m.id));
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
@@ -277,6 +326,8 @@ export const TaskDetail: React.FC = () => {
         onBack={() => navigate(-1)}
         menuItems={[
           { label: 'タスクを編集する', icon: <LuPenLine />, onClick: onManualOpenEditModal },
+          { label: 'メンバーを割り振る', icon: <LuUserPlus />, onClick: () => setShowAssignModal(true) },
+          ...(isAssigned ? [{ label: 'このタスクから退出する', icon: <LuUserMinus />, isDanger: true, onClick: handleLeaveTask }] : []),
           { label: 'タスクを削除する', icon: <LuTrash2 />, isDanger: true, onClick: handleDeleteTask }
         ]} 
       />
@@ -288,7 +339,6 @@ export const TaskDetail: React.FC = () => {
             <h2 className="text-2xl font-black text-gray-900 mb-2">{task.name}</h2>
             <div className="flex flex-wrap items-center gap-3 mt-3">
               
-              {/* ✨ 自動ステータスバッジ（読み取り専用） */}
               <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-black tracking-widest border-2 transition ${
                   task.status === '完了' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                   task.status === '進行中' ? 'bg-orange-50 text-orange-700 border-orange-200' :
@@ -359,6 +409,32 @@ export const TaskDetail: React.FC = () => {
           </div>
         </section>
 
+        {task.parent_task_id === null && childTasks.length > 0 && (
+          <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
+            <div className="flex items-center gap-2 mb-6 border-b pb-4">
+              <LuFolderOpen className="w-6 h-6 text-emerald-500" />
+              <h3 className="text-xl font-black text-gray-800 tracking-tight">この樹の枝（子タスク）</h3>
+            </div>
+            <div className="space-y-3">
+              {childTasks.map(child => (
+                <div 
+                  key={child.id}
+                  onClick={() => navigate(`/project/${communityId}/task/${child.id}`)}
+                  className="p-4 bg-gray-50 rounded-2xl flex items-center justify-between hover:bg-emerald-50 cursor-pointer transition border border-transparent hover:border-emerald-200 group"
+                >
+                  <span className="font-bold text-gray-700 group-hover:text-emerald-700">{child.name}</span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-emerald-500" style={{ width: `${child.progress}%` }} />
+                    </div>
+                    <span className="text-xs font-black text-emerald-600 w-8 text-right">{child.progress}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {!isAssigned ? (
           <button onClick={handleJoinTask} className="w-full py-6 bg-gradient-to-r from-blue-600 to-green-400 text-white rounded-3xl font-black text-xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
             <LuPlus className="w-6 h-6" /> このタスクに参加して進捗を入力
@@ -375,7 +451,6 @@ export const TaskDetail: React.FC = () => {
               <span className="text-4xl font-black text-blue-600">{localProgress}%</span>
             </div>
             
-            {/* ✨ 進捗バーの操作のみでステータスが確定する */}
             <input 
               type="range" 
               min="0" max="100" 
@@ -447,13 +522,49 @@ export const TaskDetail: React.FC = () => {
 
       </main>
 
+      {showAssignModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h3 className="text-xl font-black">メンバーを割り振る</h3>
+              <button onClick={() => setShowAssignModal(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200">
+                <LuX />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-4 space-y-2 flex-1 text-left">
+              {unassignedMembers.length > 0 ? (
+                unassignedMembers.map(member => (
+                  <div 
+                    key={member.id}
+                    onClick={() => handleAssignMember(member.id)}
+                    className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:bg-blue-50 cursor-pointer border border-transparent hover:border-blue-200 transition group"
+                  >
+                    <div>
+                      <p className="font-bold text-gray-900">{member.display_name}</p>
+                      <p className="text-xs text-gray-500">{member.email}</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity font-bold text-sm">
+                      追加する <LuChevronRight />
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-10">
+                  <p className="text-gray-400 font-bold">全員アサイン済みです</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showEditModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-[2rem] w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="px-8 py-6 border-b border-gray-100 bg-gray-50/50">
               <h3 className="text-2xl font-black text-gray-800">タスクを編集</h3>
             </div>
-            <form onSubmit={handleUpdateTask} className="p-8 overflow-y-auto flex-1 space-y-6">
+            <form onSubmit={handleUpdateTask} className="p-8 overflow-y-auto flex-1 space-y-6 text-left">
               
               <div>
                 <label className="block text-sm font-bold text-gray-600 mb-2">タスク名 <span className="text-red-500">*</span></label>

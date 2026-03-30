@@ -1,35 +1,36 @@
-import React from 'react';
-import './App.css';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+
+// 👇 エラーが出ていた3つは { } を外しました！（デフォルトインポート）
 import Login from './Login';
 import Register from './Register';
 import SelectProject from './SelectProject';
-import { ProjectMain } from './ProjectMain'; 
-import { TaskDetail } from './TaskDetail'; // 1. インポートを追加
-import { MemberDetail } from './MemberDetail';
 
-const App: React.FC = () => {
+// 👇 エラーが出ていないものは { } をつけたままです！（名前付きインポート）
+import { ProjectMain } from './ProjectMain';
+import { TaskDetail } from './TaskDetail';
+import { MemberDetail } from './MemberDetail';
+import { Home } from './Home';
+
+function App() {
   return (
     <Router>
       <Routes>
+        {/* 一番最初の画面をHome（ランディングページ）にする */}
+        <Route path="/" element={<Home />} />
+        
+        {/* 既存の各画面へのルート */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/select-project" element={<SelectProject />} />
-        
-        {/* プロジェクトメイン画面 */}
         <Route path="/project/:id" element={<ProjectMain />} />
-        
-        {/* 2. タスク詳細画面を追加 (taskIdをパラメータとして受け取る) */}
         <Route path="/project/:communityId/task/:taskId" element={<TaskDetail />} />
-        
-        {/* 3. メンバー詳細画面を追加 (userIdをパラメータとして受け取る) */}
         <Route path="/project/:communityId/member/:userId" element={<MemberDetail />} />
         
-        {/* 未定義のパスはログインへリダイレクト */}
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        {/* 存在しないURLにアクセスされたら、安全のためにHomeへ戻す */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
   );
-};
+}
 
 export default App;
