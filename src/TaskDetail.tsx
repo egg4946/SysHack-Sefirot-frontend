@@ -5,6 +5,7 @@ import {
   LuFolderOpen, LuUserPlus, LuX, LuChevronRight
 } from "react-icons/lu";
 import { Header } from './Header';
+import toast from 'react-hot-toast';
 
 // ✨ ひよこ画像のインポート（assetsフォルダに入っている前提です）
 import img1 from './assets/1.png';
@@ -145,9 +146,9 @@ export const TaskDetail: React.FC = () => {
         body: JSON.stringify({ task_id: taskId })
       });
       if (res.ok) navigate(`/project/${communityId}`);
-      else alert(`削除に失敗しました`);
+      else toast.error(`削除に失敗しました`);
     } catch {
-      alert("通信エラーが発生しました。");
+      toast.error("通信エラーが発生しました。");
     }
   };
 
@@ -171,10 +172,11 @@ export const TaskDetail: React.FC = () => {
         setShowAssignModal(false);
         fetchTaskDetail();
       } else {
-        alert("アサインに失敗しました");
+        toast.error("アサインに失敗しました");
       }
     } catch (e) {
       console.error(e);
+      toast.error("通信エラーが発生しました");
     }
   };
 
@@ -189,14 +191,14 @@ export const TaskDetail: React.FC = () => {
       });
       
       if (res.ok) {
-        alert("タスクから退出しました。");
+        toast.success("タスクから退出しました。");
         fetchTaskDetail();
       } else {
-        alert("退出に失敗しました");
+        toast.error("退出に失敗しました");
       }
     } catch (e) {
       console.error(e);
-      alert("通信エラーが発生しました");
+      toast.error("通信エラーが発生しました");
     }
   };
 
@@ -256,13 +258,13 @@ export const TaskDetail: React.FC = () => {
         })
       });
       if (res.ok) {
-        alert('子タスクを追加しました！');
+        toast.success('子タスクを追加しました！');
         fetchTaskDetail();
         setNewChildTaskName('');
-      } else alert(`作成に失敗しました`);
+      } else toast.error(`作成に失敗しました`);
     } catch (error) {
       console.error(error);
-      alert("通信エラーが発生しました");
+      toast.error("通信エラーが発生しました");
     } finally {
       setIsCreatingChild(false);
     }
@@ -276,9 +278,10 @@ export const TaskDetail: React.FC = () => {
         body: JSON.stringify({ task_id: taskId, status: newStatus })
       });
       if (res.ok) fetchTaskDetail();
-      else alert('ステータスの更新に失敗しました');
+      else toast.error('ステータスの更新に失敗しました');
     } catch (e) {
       console.error(e);
+      toast.error('通信エラーが発生しました');
     }
   };
 
@@ -301,10 +304,11 @@ export const TaskDetail: React.FC = () => {
         setShowEditModal(false);
         fetchTaskDetail();
       } else {
-        alert('タスクの更新に失敗しました');
+        toast.error('タスクの更新に失敗しました');
       }
     } catch (e) {
       console.error(e);
+      toast.error('通信エラーが発生しました');
     }
   };
 

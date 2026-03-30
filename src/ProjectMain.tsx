@@ -7,6 +7,7 @@ import {
   LuUserMinus, LuTrophy, LuLeaf, LuCalendarDays // ✨ LuCalendarDays（カレンダーアイコン）を追加
 } from "react-icons/lu";
 import { Header } from './Header';
+import toast from 'react-hot-toast';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
@@ -275,23 +276,23 @@ export const ProjectMain: React.FC = () => {
       });
 
       if (res.ok) {
-        alert("表示名を変更しました！");
+        toast.success("表示名を変更しました！");
         setShowNameModal(false);
         await fetchMembers(currentUserId);
         await fetchTasks(); 
       } else {
         const errorData = await res.json().catch(() => ({}));
-        alert(`変更に失敗しました: ${errorData.detail || 'エラー'}`);
+        toast.error(`変更に失敗しました: ${errorData.detail || 'エラー'}`);
       }
     } catch (e) {
       console.error(e);
-      alert("通信エラーが発生しました");
+      toast.error("通信エラーが発生しました");
     }
   };
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(inviteCode);
-    alert("招待コードをコピーしました！");
+    toast.success("招待コードをコピーしました！");
   };
 
   const handleToggleChat = useCallback(() => {
@@ -328,11 +329,11 @@ export const ProjectMain: React.FC = () => {
         await fetchTasks(); 
       } else {
         const errorData = await res.json().catch(() => ({}));
-        alert(`タスクの作成に失敗しました: ${errorData.detail || '不正なリクエスト'}`);
+        toast.error(`タスクの作成に失敗しました: ${errorData.detail || '不正なリクエスト'}`);
       }
     } catch (error) {
       console.error(error);
-      alert("通信エラーが発生しました");
+      toast.error("通信エラーが発生しました");
     } finally {
       setIsCreatingTask(false);
     }
@@ -351,15 +352,15 @@ export const ProjectMain: React.FC = () => {
       });
 
       if (res.ok) {
-        alert("プロジェクトを削除しました。");
+        toast.success("プロジェクトを削除しました。");
         navigate('/select-project');
       } else {
         const errorData = await res.json().catch(() => ({}));
-        alert(`削除に失敗しました: ${errorData.detail || '権限がありません'}`);
+        toast.error(`削除に失敗しました: ${errorData.detail || '権限がありません'}`);
       }
     } catch (e) {
       console.error(e);
-      alert("通信エラーが発生しました");
+      toast.error("通信エラーが発生しました");
     }
   };
 
@@ -378,15 +379,15 @@ export const ProjectMain: React.FC = () => {
       });
 
       if (res.ok) {
-        alert("プロジェクトから退出しました。");
+        toast.success("プロジェクトから退出しました。");
         navigate('/select-project');
       } else {
         const errorData = await res.json().catch(() => ({}));
-        alert(`退出に失敗しました: ${errorData.detail || 'エラー'}`);
+        toast.error(`退出に失敗しました: ${errorData.detail || 'エラー'}`);
       }
     } catch (e) {
       console.error(e);
-      alert("通信エラーが発生しました");
+      toast.error("通信エラーが発生しました");
     }
   };
 

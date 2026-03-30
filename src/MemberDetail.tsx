@@ -5,6 +5,7 @@ import {
   LuCalendarDays, LuInfo 
 } from "react-icons/lu";
 import { Header } from './Header';
+import toast from 'react-hot-toast';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
@@ -56,11 +57,12 @@ export const MemberDetail: React.FC = () => {
         const data = await res.json();
         setDetailData(data);
       } else {
-        alert("データの取得に失敗しました");
+        toast.error("データの取得に失敗しました");
         navigate(-1);
       }
     } catch (e) {
       console.error(e);
+      toast.error("通信エラーが発生しました");
     } finally {
       setLoading(false);
     }
@@ -81,15 +83,15 @@ export const MemberDetail: React.FC = () => {
       });
 
       if (res.ok) {
-        alert("メンバーを追放しました。");
+        toast.success("メンバーを追放しました。");
         navigate(`/project/${communityId}`);
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(`エラー: ${err.detail || 'キックに失敗しました'}`);
+        toast.error(`エラー: ${err.detail || 'キックに失敗しました'}`);
       }
     } catch (e) {
       console.error(e);
-      alert("通信エラーが発生しました。");
+      toast.error("通信エラーが発生しました。");
     }
   };
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { LuX, LuSend } from "react-icons/lu";
+import toast from 'react-hot-toast';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
@@ -60,6 +61,7 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
         if (isMounted) setMessages(data);
       } catch (error) {
         console.error('チャット取得失敗:', error);
+        toast.error('チャットの取得に失敗しました');
       }
     };
 
@@ -145,6 +147,7 @@ export const Chat: React.FC<ChatProps> = ({ communityId, currentUserId, onClose 
       } catch (error) {
         console.error('送信失敗:', error);
         setInputText(messageToSend);
+        toast.error('メッセージの送信に失敗しました');
       }
     }
   };
