@@ -4,7 +4,7 @@ import { Chat } from './Chat';
 import { 
   LuX, LuMessageSquare, LuUsers, LuUserPlus, LuPenLine, LuLogOut, LuCopy, LuChevronRight, 
   LuPlus, LuFolderOpen, LuFile, LuCircleCheck, LuArrowDownUp, LuArrowDown, LuArrowUp, LuTrash2,
-  LuUserMinus, LuTrophy // ✨ 両方のブランチのアイコンを合体！
+  LuUserMinus, LuTrophy
 } from "react-icons/lu";
 import { Header } from './Header';
 
@@ -70,7 +70,7 @@ export const ProjectMain: React.FC = () => {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [isCreatingTask, setIsCreatingTask] = useState(false);
 
-  // ✨ フィルター・ソート機能（promainブランチから）
+  // フィルター・ソート機能用のState
   const [sortKey, setSortKey] = useState<SortKey>('created_at');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [showOnlyMyTasks, setShowOnlyMyTasks] = useState(false);
@@ -370,7 +370,7 @@ export const ProjectMain: React.FC = () => {
 
   if (isLoading) return <div className="p-8 text-center text-gray-500 animate-pulse">読み込み中...</div>;
 
-  // ✨ 進捗計算ロジック（mainブランチから統合）
+  // 進捗計算ロジック
   const parentTasks = tasks.filter(t => !t.parentId && !t.parent_task_id);
   
   const totalProjectProgress = parentTasks.length > 0 
@@ -401,7 +401,7 @@ export const ProjectMain: React.FC = () => {
       <div className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto pb-32">
         <div className="max-w-4xl mx-auto space-y-8">
           
-          {/* ✨ プロジェクト全体サマリー（mainブランチから統合） */}
+          {/* プロジェクト全体サマリー */}
           <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl border border-blue-50 flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="flex-1 w-full">
               <div className="flex items-center gap-2 mb-2">
