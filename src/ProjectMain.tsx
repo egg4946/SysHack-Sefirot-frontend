@@ -248,8 +248,10 @@ export const ProjectMain: React.FC = () => {
       });
 
       if (res.ok) {
+        const createdTask = await res.json();
         setNewTaskTitle('');
-        await fetchTasks(); 
+        // 詳細画面へ遷移し、クエリパラメータで編集モードを指示
+        navigate(`/project/${communityId}/task/${createdTask.id}?edit=true`);
       } else {
         const errorData = await res.json().catch(() => ({}));
         alert(`タスクの作成に失敗しました: ${errorData.detail || '不正なリクエスト'}`);
