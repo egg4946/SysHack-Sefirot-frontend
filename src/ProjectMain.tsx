@@ -2,10 +2,10 @@ import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { Chat } from './Chat';
 import { 
-  LuX, LuMessageSquare, LuUsers, LuUserPlus, LuPenLine, LuLogOut, LuCopy, LuChevronRight, 
-  LuPlus, LuFolderOpen, LuCircleCheck, LuArrowDownUp, LuArrowDown, LuArrowUp, LuTrash2,
-  LuUserMinus, LuTrophy, LuLeaf, LuCalendarDays // ✨ LuCalendarDays（カレンダーアイコン）を追加
-} from "react-icons/lu";
+  LuX, LuMessageSquare, LuUsers, LuUserPlus, LuPenLine, LuLogOut, LuChevronRight, 
+  LuPlus, LuFolderOpen, LuArrowDown, LuArrowUp,
+  LuTrophy, LuLeaf, LuCalendarDays 
+} from "react-icons/lu"; 
 import { Header } from './Header';
 import toast from 'react-hot-toast';
 
@@ -45,7 +45,6 @@ interface Task {
 type SortKey = 'created_at' | 'deadline' | 'priority' | 'progress' | 'name';
 type SortOrder = 'asc' | 'desc';
 
-// 進捗度に応じた「色の成長」テーマ
 const getProgressTheme = (progress: number) => {
   if (progress === 100) return {
     barBg: 'bg-gradient-to-r from-emerald-400 to-cyan-400 shadow-[0_0_12px_rgba(52,211,153,0.6)]',
@@ -85,13 +84,9 @@ const getProgressTheme = (progress: number) => {
   };
 };
 
-// ✨ 提案4：期限の状態を判定して「焦りUI」のスタイルを返す関数
 const getDeadlineStatus = (deadlineStr: string | null, isCompleted: boolean) => {
   if (!deadlineStr) return null;
-  
   const deadline = new Date(deadlineStr);
-  
-  // 100%完了している場合は、ただの日付を薄く表示するだけ（焦らせない）
   if (isCompleted) {
     return { 
       text: deadline.toLocaleDateString(), 
@@ -99,27 +94,16 @@ const getDeadlineStatus = (deadlineStr: string | null, isCompleted: boolean) => 
       isUrgent: false
     };
   }
-
-  // 日付の比較のために0時0分に揃える
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const target = new Date(deadline);
   target.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   
-  // 何日差か計算
-  const diffTime = target.getTime() - today.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  
-  if (diffDays < 0) {
-    return { text: '⚠️ 期限切れ', className: 'bg-red-100 text-red-700 border-red-300 animate-pulse shadow-sm', isUrgent: true };
-  } else if (diffDays === 0) {
-    return { text: '🔥 今日まで', className: 'bg-orange-100 text-orange-700 border-orange-300 animate-pulse shadow-sm', isUrgent: true };
-  } else if (diffDays === 1) {
-    return { text: '⚡ 明日まで', className: 'bg-yellow-100 text-yellow-700 border-yellow-300 shadow-sm', isUrgent: true };
-  } else {
-    // 余裕がある場合は普通に日付を表示
-    return { text: deadline.toLocaleDateString(), className: 'bg-gray-100 text-gray-500 border-transparent', isUrgent: false };
-  }
+  if (diffDays < 0) return { text: '⚠️ 期限切れ', className: 'bg-red-100 text-red-700 border-red-300 animate-pulse shadow-sm', isUrgent: true };
+  if (diffDays === 0) return { text: '🔥 今日まで', className: 'bg-orange-100 text-orange-700 border-orange-300 animate-pulse shadow-sm', isUrgent: true };
+  if (diffDays === 1) return { text: '⚡ 明日まで', className: 'bg-yellow-100 text-yellow-700 border-yellow-300 shadow-sm', isUrgent: true };
+  return { text: deadline.toLocaleDateString(), className: 'bg-gray-100 text-gray-500 border-transparent', isUrgent: false };
 };
 
 export const ProjectMain: React.FC = () => {
@@ -128,22 +112,18 @@ export const ProjectMain: React.FC = () => {
 
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [myDisplayName, setMyDisplayName] = useState<string>(''); 
-
   const [isLoading, setIsLoading] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
   const lastMessageIdRef = useRef<string | null>(null);
   
   const [projectName, setProjectName] = useState<string>('');
-  const [inviteCode, setInviteCode] = useState<string>('');
-
+  const [inviteCode, setInviteCode] = useState<string>(''); 
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showNameModal, setShowNameModal] = useState(false);
-
   const [members, setMembers] = useState<CommunityMember[]>([]);
   const [newName, setNewName] = useState('');
-
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [isCreatingTask, setIsCreatingTask] = useState(false);
@@ -152,6 +132,16 @@ export const ProjectMain: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [showOnlyMyTasks, setShowOnlyMyTasks] = useState(false);
   const [hideCompleted, setHideCompleted] = useState(false);
+
+  // ✨ 再掲：親タスクの実質進捗を計算する共通関数
+  const getTaskEffectiveProgress = (parentTask: Task, allTasks: Task[]) => {
+    const children = allTasks.filter(t => t.parentId === parentTask.id || t.parent_task_id === parentTask.id);
+    if (children.length > 0) {
+      const sum = children.reduce((acc, c) => acc + (c.progress ?? 0), 0);
+      return Math.round(sum / children.length);
+    }
+    return parentTask.progress ?? 0;
+  };
 
   const fetchMembers = useCallback(async (userIdToFind: string) => {
     if (!communityId) return;
@@ -164,13 +154,9 @@ export const ProjectMain: React.FC = () => {
         const data: CommunityMember[] = await res.json();
         setMembers(data);
         const me = data.find(m => m.id === userIdToFind);
-        if (me) {
-          setMyDisplayName(me.display_name);
-        }
+        if (me) setMyDisplayName(me.display_name);
       }
-    } catch (e) {
-      console.error(e);
-    }
+    } catch { /* エラー処理 */ }
   }, [communityId]);
 
   const fetchTasks = useCallback(async () => {
@@ -182,18 +168,20 @@ export const ProjectMain: React.FC = () => {
       });
       if (res.ok) {
         const data = await res.json();
-        setTasks(data);
+        const sanitizedData = data.map((t: Task) => ({
+          ...t,
+          progress: typeof t.progress === 'number' ? t.progress : 0
+        }));
+        setTasks(sanitizedData);
       }
-    } catch (e) {
-      console.error("タスクの取得に失敗しました", e);
-    }
+    } catch (_e) { console.error("タスク取得失敗", _e); }
   }, [communityId]);
 
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
         const token = localStorage.getItem('access_token');
-        if (!token) return;
+        if (!token) { navigate('/login'); return; }
 
         const meRes = await fetch(`${API_BASE}/me`, {
           headers: { 'Authorization': `Bearer ${token}` }
@@ -202,39 +190,31 @@ export const ProjectMain: React.FC = () => {
           const meData: UserData = await meRes.json();
           const userId = meData.user_data.id;
           setCurrentUserId(userId);
-          
           const myCommunity = meData.user_communities.find((c: UserCommunity) => c.id === communityId);
           if (myCommunity) {
             setProjectName(myCommunity.name);
             setInviteCode(myCommunity.invite_code);
           }
-          
-          await fetchTasks();
-          await fetchMembers(userId);
+          await Promise.all([fetchTasks(), fetchMembers(userId)]);
         }
-      } catch (error) {
-        console.error('データの取得に失敗しました', error);
-      } finally {
-        setIsLoading(false);
-      }
+      } catch (_e) { console.error('データ取得失敗', _e); }
+      finally { setIsLoading(false); }
     };
     fetchInitialData();
-  }, [communityId, fetchTasks, fetchMembers]);
+  }, [communityId, fetchTasks, fetchMembers, navigate]);
 
   useEffect(() => {
-    if (!communityId) return;
+    if (!communityId || isChatOpen) return;
     const token = localStorage.getItem('access_token');
-    if (!token) return;
-
+    
     fetch(`${API_BASE}/chat/messages?community_id=${communityId}&limit=1`, {
         headers: { 'Authorization': `Bearer ${token}` }
     })
     .then(res => res.json())
-    .then(data => { if(data.length > 0) lastMessageIdRef.current = data[0].id; })
-    .catch(error => console.error(error));
+    .then(data => { if(data.length > 0) lastMessageIdRef.current = data[0].id; });
 
     const intervalId = setInterval(async () => {
-      if (!communityId || isChatOpen) return; 
+      if (isChatOpen) return;
       try {
         const res = await fetch(`${API_BASE}/chat/messages?community_id=${communityId}&limit=1`, {
           headers: { 'Authorization': `Bearer ${token}` }
@@ -242,25 +222,20 @@ export const ProjectMain: React.FC = () => {
         if (res.ok) {
           const data: LatestMessageResponse[] = await res.json();
           if (data.length > 0) {
-            const latestMessageId = data[0].id;
-            if (lastMessageIdRef.current && latestMessageId !== lastMessageIdRef.current) {
+            const latestId = data[0].id;
+            if (lastMessageIdRef.current && latestId !== lastMessageIdRef.current) {
               setHasUnread(true);
-              lastMessageIdRef.current = latestMessageId;
-            } else if (!lastMessageIdRef.current) {
-              lastMessageIdRef.current = latestMessageId;
             }
+            lastMessageIdRef.current = latestId;
           }
         }
-      } catch (error) { console.error(error); }
-    }, 3000);
+      } catch { /* 通信エラー等は無視 */ }
+    }, 5000);
 
     return () => clearInterval(intervalId);
   }, [communityId, isChatOpen]);
 
-  const handleOpenNameModal = () => {
-    setNewName(myDisplayName);
-    setShowNameModal(true);
-  };
+  const handleOpenNameModal = () => { setNewName(myDisplayName); setShowNameModal(true); };
 
   const handleChangeName = async () => {
     if (!newName.trim()) return;
@@ -268,26 +243,15 @@ export const ProjectMain: React.FC = () => {
       const token = localStorage.getItem('access_token');
       const res = await fetch(`${API_BASE}/community/member/name`, {
         method: 'PATCH',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` 
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ community_id: communityId, display_name: newName })
       });
-
       if (res.ok) {
         toast.success("表示名を変更しました！");
         setShowNameModal(false);
-        await fetchMembers(currentUserId);
-        await fetchTasks(); 
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        toast.error(`変更に失敗しました: ${errorData.detail || 'エラー'}`);
+        fetchMembers(currentUserId);
       }
-    } catch (e) {
-      console.error(e);
-      toast.error("通信エラーが発生しました");
-    }
+    } catch { toast.error("通信エラー"); }
   };
 
   const handleCopyCode = () => {
@@ -297,291 +261,152 @@ export const ProjectMain: React.FC = () => {
 
   const handleToggleChat = useCallback(() => {
     setIsChatOpen(prev => {
-      const newState = !prev;
-      if (newState) setHasUnread(false);
-      return newState;
+      if (!prev) setHasUnread(false);
+      return !prev;
     });
   }, []);
 
   const handleCreateParentTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim() || isCreatingTask) return;
-    
     setIsCreatingTask(true);
     try {
       const token = localStorage.getItem('access_token');
       const res = await fetch(`${API_BASE}/tasks/create`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` 
-        },
-        body: JSON.stringify({ 
-          community_id: communityId, 
-          name: newTaskTitle, 
-          priority: '中',
-          parent_task_id: null 
-        })
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ community_id: communityId, name: newTaskTitle, priority: '中', parent_task_id: null })
       });
-
       if (res.ok) {
+        const data = await res.json();
         setNewTaskTitle('');
-        await fetchTasks(); 
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        toast.error(`タスクの作成に失敗しました: ${errorData.detail || '不正なリクエスト'}`);
+        navigate(`/project/${communityId}/task/${data.id}`, { state: { autoEdit: true } });
       }
-    } catch (error) {
-      console.error(error);
-      toast.error("通信エラーが発生しました");
-    } finally {
-      setIsCreatingTask(false);
-    }
+    } catch { toast.error("作成失敗"); }
+    finally { setIsCreatingTask(false); }
   };
 
-  const handleDeleteProject = async () => {
-    if (!window.confirm("本当にこのプロジェクトを削除しますか？\n（すべてのタスクやチャット履歴が完全に消去され、元に戻せません！）")) return;
-
-    try {
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(`${API_BASE}/community/delete?community_id=${communityId}`, {
-        method: 'DELETE',
-        headers: { 
-          'Authorization': `Bearer ${token}` 
-        }
-      });
-
-      if (res.ok) {
-        toast.success("プロジェクトを削除しました。");
-        navigate('/select-project');
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        toast.error(`削除に失敗しました: ${errorData.detail || '権限がありません'}`);
-      }
-    } catch (e) {
-      console.error(e);
-      toast.error("通信エラーが発生しました");
-    }
-  };
-
-  const handleLeaveProject = async () => {
-    if (!window.confirm("本当にこのプロジェクトから退出しますか？\n（担当しているタスクからは自動的に外れます。再度参加するには招待コードが必要です）")) return;
-
-    try {
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(`${API_BASE}/community/leave`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` 
-        },
-        body: JSON.stringify({ community_id: communityId })
-      });
-
-      if (res.ok) {
-        toast.success("プロジェクトから退出しました。");
-        navigate('/select-project');
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        toast.error(`退出に失敗しました: ${errorData.detail || 'エラー'}`);
-      }
-    } catch (e) {
-      console.error(e);
-      toast.error("通信エラーが発生しました");
-    }
-  };
-
+  // ✨ useMemo を修正：計算関数を内側に含め依存関係警告を解消
   const sortedParentTasks = useMemo(() => {
     let parents = tasks.filter(t => !t.parentId && !t.parent_task_id);
-
     parents = parents.filter(task => {
-      if (hideCompleted && task.progress === 100) return false;
-      
+      const actualProgress = getTaskEffectiveProgress(task, tasks);
+      if (hideCompleted && actualProgress === 100) return false;
       if (showOnlyMyTasks) {
         const isAssignedToParent = task.assignees?.some(a => a.id === currentUserId);
-        const childTasks = tasks.filter(t => t.parentId === task.id || t.parent_task_id === task.id);
-        const isAssignedToAnyChild = childTasks.some(child => child.assignees?.some(a => a.id === currentUserId));
-        
-        if (!isAssignedToParent && !isAssignedToAnyChild) return false;
+        const children = tasks.filter(t => t.parentId === task.id || t.parent_task_id === task.id);
+        const isAssignedToChild = children.some(c => c.assignees?.some(a => a.id === currentUserId));
+        if (!isAssignedToParent && !isAssignedToChild) return false;
       }
-
       return true;
     });
     
     return parents.sort((a, b) => {
-      let valA: number | string = 0;
-      let valB: number | string = 0;
-
+      let valA: string | number, valB: string | number;
       switch (sortKey) {
-        case 'progress':
-          valA = a.progress;
-          valB = b.progress;
+        case 'progress': 
+          valA = getTaskEffectiveProgress(a, tasks); 
+          valB = getTaskEffectiveProgress(b, tasks); 
           break;
-        case 'name':
-          valA = a.title || a.name || '';
-          valB = b.title || b.name || '';
-          break;
+        case 'name': valA = a.title || a.name || ''; valB = b.title || b.name || ''; break;
         case 'priority': {
           const pMap: Record<string, number> = { '大': 3, '中': 2, '小': 1 };
-          valA = pMap[a.priority] || 0;
-          valB = pMap[b.priority] || 0;
-          break;
+          valA = pMap[a.priority] || 0; valB = pMap[b.priority] || 0; break;
         }
         case 'deadline':
           valA = a.deadline ? new Date(a.deadline).getTime() : (sortOrder === 'asc' ? Infinity : -Infinity);
           valB = b.deadline ? new Date(b.deadline).getTime() : (sortOrder === 'asc' ? Infinity : -Infinity);
           break;
-        case 'created_at':
         default:
           valA = new Date(a.createdAt || a.created_at || 0).getTime();
           valB = new Date(b.createdAt || b.created_at || 0).getTime();
-          break;
       }
-
-      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-      return 0;
+      return sortOrder === 'asc' ? (valA > valB ? 1 : -1) : (valA < valB ? 1 : -1);
     });
   }, [tasks, sortKey, sortOrder, showOnlyMyTasks, hideCompleted, currentUserId]);
-
 
   if (isLoading) return <div className="p-8 text-center text-gray-500 animate-pulse">読み込み中...</div>;
 
   const parentTasks = tasks.filter(t => !t.parentId && !t.parent_task_id);
-  
   const totalProjectProgress = parentTasks.length > 0 
-    ? Math.round(parentTasks.reduce((acc, t) => acc + (t.progress || 0), 0) / parentTasks.length)
+    ? Math.round(parentTasks.reduce((acc, t) => acc + getTaskEffectiveProgress(t, tasks), 0) / parentTasks.length)
     : 0;
-  
   const projectTheme = getProgressTheme(totalProjectProgress);
 
   return (
     <div className="relative flex flex-col h-screen bg-gray-50 text-gray-900 font-sans overflow-hidden">
-      
       <Header 
-        title={projectName ? `${projectName} （👤 ${myDisplayName}）` : "Sefirot Project"} 
+        title={projectName ? `${projectName} （👤 ${myDisplayName}）` : "進捗の樹"} 
         showBackButton={true}
         onBack={() => navigate('/select-project')}
         menuItems={[
-          { 
-            label: 'メンバー一覧', 
-            icon: <LuUsers />, 
-            onClick: () => { fetchMembers(currentUserId); setShowMemberModal(true); } 
-          },
-          { label: '招待コードを表示', icon: <LuUserPlus />, onClick: () => setShowInviteModal(true) },
-          { label: 'このプロジェクトでの表示名変更', icon: <LuPenLine />, onClick: handleOpenNameModal },
-          { label: 'プロジェクトから退出する', icon: <LuUserMinus />, isDanger: true, onClick: handleLeaveProject },
-          { label: 'プロジェクトを削除する', icon: <LuTrash2 />, isDanger: true, onClick: handleDeleteProject },
+          { label: 'メンバー一覧', icon: <LuUsers />, onClick: () => setShowMemberModal(true) },
+          { label: '招待コード', icon: <LuUserPlus />, onClick: () => setShowInviteModal(true) },
+          { label: '表示名変更', icon: <LuPenLine />, onClick: handleOpenNameModal },
           { label: 'ログアウト', icon: <LuLogOut />, isDanger: true, onClick: () => { localStorage.removeItem('access_token'); navigate('/login'); } }
         ]} 
       />
 
       <div className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto pb-32">
         <div className="max-w-4xl mx-auto space-y-8">
-          
           <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl border border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="flex-1 w-full">
               <div className="flex items-center gap-2 mb-2">
                 <LuTrophy className="text-yellow-500 w-5 h-5" />
-                <span className="text-sm font-black text-gray-400 uppercase tracking-[0.2em]">Project Overall</span>
+                <span className="text-sm font-black text-gray-400 uppercase tracking-widest">Project Overall</span>
               </div>
               <div className="flex items-end gap-3 mb-4">
-                <span className={`text-5xl font-black tracking-tighter transition-colors duration-1000 ${projectTheme.text}`}>
-                  {totalProjectProgress}%
-                </span>
+                <span className={`text-5xl font-black tracking-tighter ${projectTheme.text}`}>{totalProjectProgress}%</span>
                 <span className="text-sm font-bold text-gray-400 mb-2">完了</span>
               </div>
-              <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden shadow-inner">
-                <div 
-                  className={`h-full transition-all duration-1000 ease-out ${projectTheme.barBg}`} 
-                  style={{ width: `${totalProjectProgress}%` }}
-                />
+              <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+                <div className={`h-full transition-all duration-1000 ${projectTheme.barBg}`} style={{ width: `${totalProjectProgress}%` }} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4 w-full sm:w-auto">
                 <div className="bg-gray-50 p-4 rounded-3xl text-center border border-gray-200">
-                    <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Total Tasks</p>
+                    <p className="text-[10px] font-black text-gray-400 uppercase">Total Tasks</p>
                     <p className="text-xl font-black text-gray-700">{parentTasks.length}</p>
                 </div>
                 <div className="bg-gray-50 p-4 rounded-3xl text-center border border-gray-200">
-                    <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Completed</p>
-                    <p className="text-xl font-black text-gray-700">{parentTasks.filter(t => t.progress === 100).length}</p>
+                    <p className="text-[10px] font-black text-gray-400 uppercase">Done</p>
+                    <p className="text-xl font-black text-gray-700">{parentTasks.filter(t => getTaskEffectiveProgress(t, tasks) === 100).length}</p>
                 </div>
             </div>
           </div>
 
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-            <h2 className="text-xl font-black mb-4 text-gray-800">新しいタスクを追加</h2>
+            <h2 className="text-xl font-black mb-4 text-gray-800">新しいタスク（種）を植える</h2>
             <form onSubmit={handleCreateParentTask} className="flex gap-3">
               <input
                 type="text"
                 placeholder="タスク名を入力..."
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
-                className="flex-1 bg-gray-50 border border-gray-200 rounded-2xl px-5 py-3 font-bold focus:ring-2 focus:ring-blue-500 outline-none transition"
+                className="flex-1 bg-gray-50 border border-gray-200 rounded-2xl px-5 py-3 font-bold focus:ring-2 focus:ring-blue-500 outline-none"
               />
-              <button 
-                type="submit" 
-                disabled={!newTaskTitle.trim() || isCreatingTask}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition shadow-md"
-              >
-                <LuPlus className="w-5 h-5" />
-                <span className="hidden sm:inline">追加</span>
+              <button type="submit" disabled={!newTaskTitle.trim() || isCreatingTask} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-blue-700">
+                <LuPlus className="w-5 h-5" /> 追加
               </button>
             </form>
           </div>
 
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-            
             <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
-              
-              <h2 className="text-xl font-black text-gray-800 flex items-center gap-3">
-                <span>タスク一覧</span>
-                <span className="text-sm font-bold text-gray-400 bg-gray-100 px-3 py-1 rounded-full whitespace-nowrap">
-                  全 {sortedParentTasks.length} 件
-                </span>
-              </h2>
-
+              <h2 className="text-xl font-black text-gray-800 flex items-center gap-3">タスク一覧</h2>
               <div className="flex flex-wrap items-center gap-3">
-                <div className="flex bg-gray-50 p-1.5 rounded-2xl border border-gray-100">
-                  <button
-                    onClick={() => setShowOnlyMyTasks(!showOnlyMyTasks)}
-                    className={`px-3 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all ${
-                      showOnlyMyTasks ? 'bg-blue-500 text-white shadow-md' : 'text-gray-500 hover:bg-gray-200'
-                    }`}
-                  >
-                    <LuUsers className="w-3.5 h-3.5" /> 自分のタスク
-                  </button>
-                  <button
-                    onClick={() => setHideCompleted(!hideCompleted)}
-                    className={`px-3 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all ${
-                      hideCompleted ? 'bg-emerald-500 text-white shadow-md' : 'text-gray-500 hover:bg-gray-200'
-                    }`}
-                  >
-                    <LuCircleCheck className="w-3.5 h-3.5" /> 完了を非表示
-                  </button>
+                <div className="flex bg-gray-50 p-1.5 rounded-2xl border border-gray-100 text-xs font-bold">
+                  <button onClick={() => setShowOnlyMyTasks(!showOnlyMyTasks)} className={`px-3 py-1.5 rounded-xl ${showOnlyMyTasks ? 'bg-blue-500 text-white' : 'text-gray-500'}`}>自分のタスク</button>
+                  <button onClick={() => setHideCompleted(!hideCompleted)} className={`px-3 py-1.5 rounded-xl ${hideCompleted ? 'bg-emerald-500 text-white' : 'text-gray-500'}`}>完了を非表示</button>
                 </div>
-
                 <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-2xl border border-gray-100">
-                  <div className="flex items-center pl-2 pr-1 text-gray-400">
-                    <LuArrowDownUp className="w-4 h-4" />
-                  </div>
-                  <select
-                    value={sortKey}
-                    onChange={(e) => setSortKey(e.target.value as SortKey)}
-                    className="bg-transparent text-sm font-bold text-gray-700 outline-none cursor-pointer py-1 pr-2"
-                  >
+                  <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} className="bg-transparent text-sm font-bold outline-none">
                     <option value="created_at">追加日</option>
                     <option value="deadline">期限日</option>
                     <option value="priority">重要度</option>
                     <option value="progress">進捗度</option>
-                    <option value="name">名前</option>
                   </select>
-                  <button
-                    onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                    className="p-1.5 bg-white rounded-xl shadow-sm border border-gray-200 hover:bg-gray-50 text-gray-600 transition flex items-center justify-center w-8 h-8"
-                    title={sortOrder === 'asc' ? "昇順 (小さい順/古い順)" : "降順 (大きい順/新しい順)"}
-                  >
+                  <button onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')} className="p-1.5 bg-white rounded-xl shadow-sm border border-gray-200">
                     {sortOrder === 'asc' ? <LuArrowUp className="w-4 h-4" /> : <LuArrowDown className="w-4 h-4" />}
                   </button>
                 </div>
@@ -592,111 +417,45 @@ export const ProjectMain: React.FC = () => {
               {sortedParentTasks.length === 0 ? (
                 <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50/50">
                   <LuLeaf className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500 font-bold">まだこの大地には何もありません</p>
-                  <p className="text-sm text-gray-400 mt-1">最初のタスク（種）を植えて、樹を育てましょう！</p>
+                  <p className="text-gray-500 font-bold">まだ何もありません。種を植えましょう！</p>
                 </div>
               ) : (
                 sortedParentTasks.map(parentTask => {
-                  const childTasks = tasks.filter(t => t.parentId === parentTask.id || t.parent_task_id === parentTask.id);
-                  const isCompleted = parentTask.progress === 100;
-                  const parentTheme = getProgressTheme(parentTask.progress);
-                  
-                  // ✨ 親タスクの期限情報を取得
+                  const children = tasks.filter(t => t.parentId === parentTask.id || t.parent_task_id === parentTask.id);
+                  const actualProgress = getTaskEffectiveProgress(parentTask, tasks);
+                  const isCompleted = actualProgress === 100;
+                  const theme = getProgressTheme(actualProgress);
                   const deadlineInfo = getDeadlineStatus(parentTask.deadline, isCompleted);
                   
                   return (
-                    <div key={parentTask.id} className={`rounded-3xl border overflow-hidden transition-all duration-500 shadow-sm ${parentTheme.cardBg} ${parentTheme.border}`}>
-                      
-                      {/* 親タスクのカード */}
-                      <div 
-                        onClick={() => navigate(`/project/${communityId}/task/${parentTask.id}`)}
-                        className={`relative z-10 p-5 bg-white cursor-pointer transition flex items-center gap-4 group ${parentTheme.hoverBg}`}
-                      >
-                        <LuFolderOpen className={`w-7 h-7 flex-shrink-0 transition-colors duration-500 ${parentTheme.iconText}`} />
+                    <div key={parentTask.id} className={`rounded-3xl border overflow-hidden shadow-sm ${theme.cardBg} ${theme.border}`}>
+                      <div onClick={() => navigate(`/project/${communityId}/task/${parentTask.id}`)} className={`p-5 bg-white cursor-pointer flex items-center gap-4 hover:bg-gray-50 transition`}>
+                        <LuFolderOpen className={`w-7 h-7 flex-shrink-0 ${theme.iconText}`} />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <h3 className={`font-extrabold truncate text-lg transition-colors duration-500 ${isCompleted ? 'text-emerald-800' : 'text-gray-800 group-hover:text-blue-700'}`}>
-                              {parentTask.title || parentTask.name}
-                            </h3>
-                            {isCompleted && (
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-black tracking-widest bg-emerald-500 text-white shadow-sm flex items-center gap-1">
-                                👑 COMPLETE!
-                              </span>
-                            )}
+                            <h3 className={`font-extrabold truncate text-lg ${isCompleted ? 'text-emerald-800' : 'text-gray-800'}`}>{parentTask.title || parentTask.name}</h3>
+                            {isCompleted && <span className="text-[10px] font-black bg-emerald-500 text-white px-2 py-0.5 rounded">👑 COMPLETE!</span>}
                           </div>
                           <div className="flex flex-wrap items-center gap-2 mt-2">
-                            <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md bg-gray-100 ${parentTheme.text}`}>
-                              {parentTask.status}
-                            </span>
-                            
-                            {/* ✨ 親タスクの焦りUI（期限バッジ） */}
-                            {deadlineInfo && (
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${deadlineInfo.className}`}>
-                                <LuCalendarDays className="w-3 h-3" />
-                                {deadlineInfo.text}
-                              </span>
-                            )}
-
-                            <div className={`flex-1 h-2 rounded-full overflow-hidden bg-gray-100 min-w-[50px]`}>
-                              <div className={`h-full transition-all duration-1000 ${parentTheme.barBg}`} style={{ width: `${parentTask.progress}%` }} />
+                            {deadlineInfo && <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${deadlineInfo.className}`}><LuCalendarDays className="w-3 h-3" /> {deadlineInfo.text}</span>}
+                            <div className="flex-1 h-2 rounded-full bg-gray-100 shadow-inner">
+                              <div className={`h-full transition-all duration-1000 ${theme.barBg}`} style={{ width: `${actualProgress}%` }} />
                             </div>
-                            <span className={`text-xs font-black w-8 text-right transition-colors duration-500 ${parentTheme.text}`}>{parentTask.progress}%</span>
+                            <span className={`text-xs font-black ${theme.text}`}>{actualProgress}%</span>
                           </div>
                         </div>
                       </div>
-
-                      {/* 子タスク */}
-                      {childTasks.length > 0 && (
+                      {children.length > 0 && (
                         <div className="relative pt-3 pb-5 pr-5">
-                          <div className={`absolute left-[2.35rem] top-0 bottom-8 w-1 rounded-b-full transition-colors duration-500 ${parentTheme.lineBg}`}></div>
-                          
+                          <div className={`absolute left-[2.35rem] top-0 bottom-8 w-1 ${theme.lineBg}`}></div>
                           <div className="space-y-3">
-                            {childTasks.map(childTask => {
-                              const isMyChild = childTask.assignees?.some(a => a.id === currentUserId);
-                              const childCompleted = childTask.progress === 100;
-                              const childTheme = getProgressTheme(childTask.progress);
-                              
-                              // ✨ 子タスクの期限情報を取得
-                              const childDeadlineInfo = getDeadlineStatus(childTask.deadline, childCompleted);
-
-                              if (hideCompleted && childCompleted) return null;
-                              if (showOnlyMyTasks && !isMyChild) return null;
-
-                              return (
-                                <div key={childTask.id} className="relative ml-[4rem] group/child">
-                                  <div className={`absolute -left-[1.65rem] top-1/2 w-[1.65rem] h-1 transition-colors duration-500 ${childTheme.lineBg}`}></div>
-                                  
-                                  <div 
-                                    onClick={() => navigate(`/project/${communityId}/task/${childTask.id}`)}
-                                    className={`relative p-4 bg-white rounded-2xl border transition-all duration-300 flex items-center gap-3 cursor-pointer hover:-translate-y-0.5 shadow-sm hover:shadow-md ${childTheme.border}`}
-                                  >
-                                    <LuLeaf className={`w-5 h-5 flex-shrink-0 transition-colors duration-500 ${childTheme.iconText}`} />
-                                    <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <h4 className={`font-bold text-sm truncate transition-colors duration-500 ${childCompleted ? 'text-emerald-700' : 'text-gray-700 group-hover/child:text-blue-600'}`}>
-                                          {childTask.title || childTask.name}
-                                        </h4>
-                                        {childCompleted && <span className="text-[10px] font-black text-emerald-500 bg-emerald-50 px-1.5 rounded">DONE</span>}
-                                        
-                                        {/* ✨ 子タスクの焦りUI（期限バッジ） */}
-                                        {!childCompleted && childDeadlineInfo && (
-                                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 ${childDeadlineInfo.className}`}>
-                                            {childDeadlineInfo.isUrgent && <LuCalendarDays className="w-3 h-3" />}
-                                            {childDeadlineInfo.text}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center gap-3 w-full sm:w-1/3 mt-1 sm:mt-0">
-                                        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                          <div className={`h-full transition-all duration-1000 ${childTheme.barBg}`} style={{ width: `${childTask.progress}%` }} />
-                                        </div>
-                                        <span className={`text-[10px] font-black w-6 text-right transition-colors duration-500 ${childTheme.text}`}>{childTask.progress}%</span>
-                                      </div>
-                                    </div>
-                                  </div>
+                            {children.map(child => (
+                                <div key={child.id} onClick={() => navigate(`/project/${communityId}/task/${child.id}`)} className="relative ml-[4rem] p-4 bg-white rounded-2xl border flex items-center gap-3 cursor-pointer hover:shadow-md transition">
+                                    <LuLeaf className="w-4 h-4 text-emerald-500" />
+                                    <span className="text-sm font-bold truncate flex-1">{child.title || child.name}</span>
+                                    <span className="text-[10px] font-black">{child.progress ?? 0}%</span>
                                 </div>
-                              );
-                            })}
+                            ))}
                           </div>
                         </div>
                       )}
@@ -708,106 +467,55 @@ export const ProjectMain: React.FC = () => {
           </div>
         </div>
       </div>
-      
-      <div className={`fixed z-40 transition-all duration-300 transform ${
-        'inset-0 w-full h-full rounded-none origin-bottom' +
-        ' sm:inset-auto sm:bottom-28 sm:right-6 sm:w-[400px] sm:h-[600px] sm:rounded-2xl sm:shadow-2xl sm:border sm:border-gray-300 sm:origin-bottom-right '
-      } ${
-        isChatOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95 pointer-events-none'
-      }`}>
-        {currentUserId && communityId && isChatOpen && (
-          <Chat communityId={communityId} currentUserId={currentUserId} onClose={handleToggleChat} />
-        )}
-      </div>
 
+      <div className={`fixed z-40 transition-all duration-300 ${isChatOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'} sm:bottom-28 sm:right-6 sm:w-[400px] sm:h-[600px] inset-0 sm:inset-auto`}>
+        {currentUserId && communityId && isChatOpen && <Chat communityId={communityId} currentUserId={currentUserId} onClose={handleToggleChat} />}
+      </div>
       <div className="fixed bottom-6 right-6 z-30">
-        <button 
-          onClick={handleToggleChat}
-          className={`relative flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-full shadow-2xl border transition-all duration-200 active:scale-95 ${
-            isChatOpen ? 'bg-gray-200 hover:bg-gray-300 text-gray-800' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-900/40'
-          }`}
-        >
-          {isChatOpen ? <LuX className="w-8 h-8 sm:w-10 sm:h-10" /> : (
-            <>
-              <LuMessageSquare className="w-8 h-8 sm:w-10 sm:h-10" />
-              {hasUnread && (
-                <span className="absolute top-1 right-1 flex h-4 w-4 sm:h-5 sm:w-5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-full w-full bg-red-600 border border-white shadow-md"></span>
-                </span>
-              )}
-            </>
-          )}
+        <button onClick={handleToggleChat} className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full shadow-2xl flex items-center justify-center transition ${isChatOpen ? 'bg-gray-200 text-gray-800' : 'bg-blue-600 text-white'}`}>
+          {isChatOpen ? <LuX className="w-8 h-8" /> : <><LuMessageSquare className="w-8 h-8" />{hasUnread && <span className="absolute top-1 right-1 h-5 w-5 bg-red-600 rounded-full border-2 border-white animate-pulse"></span>}</>}
         </button>
       </div>
 
       {showMemberModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
-            <div className="flex justify-between items-center p-6 border-b">
-              <h3 className="text-xl font-black">メンバー一覧</h3>
-              <button onClick={() => setShowMemberModal(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200"><LuX /></button>
-            </div>
-            <div className="overflow-y-auto p-4 space-y-2 flex-1">
-              {members.map(member => (
-                <div 
-                  key={member.id}
-                  onClick={() => navigate(`/project/${communityId}/member/${member.id}`)}
-                  className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:bg-blue-50 cursor-pointer border border-transparent hover:border-blue-200 transition group"
-                >
-                  <div>
-                    <p className="font-bold text-gray-900">{member.display_name}</p>
-                    <p className="text-xs text-gray-500">{member.email}</p>
-                  </div>
-                  <LuChevronRight className="text-gray-400 group-hover:text-blue-500" />
-                </div>
-              ))}
-            </div>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 max-h-[80vh] overflow-y-auto shadow-2xl">
+            <h3 className="text-xl font-black mb-4">メンバー一覧</h3>
+            {members.map(m => (
+              <div key={m.id} onClick={() => { setShowMemberModal(false); navigate(`/project/${communityId}/member/${m.id}`); }} className="p-4 hover:bg-blue-50 rounded-2xl cursor-pointer border mb-2 flex justify-between items-center transition">
+                <span>{m.display_name}</span><LuChevronRight />
+              </div>
+            ))}
+            <button onClick={() => setShowMemberModal(false)} className="w-full mt-4 py-3 bg-gray-100 rounded-xl font-bold hover:bg-gray-200 transition">閉じる</button>
           </div>
         </div>
       )}
 
       {showInviteModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl text-center">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl p-8 w-full max-w-sm text-center shadow-2xl">
             <h3 className="text-xl font-black mb-2">招待コード</h3>
-            <p className="text-sm text-gray-500 mb-6">メンバーを招待するためのコードです</p>
-            <div className="text-4xl font-black tracking-[0.2em] text-blue-600 bg-blue-50 py-4 rounded-2xl mb-6 border border-blue-100">
-              {inviteCode}
-            </div>
+            <div className="text-4xl font-black text-blue-600 bg-blue-50 py-4 rounded-2xl mb-6 border border-blue-100 tracking-widest">{inviteCode}</div>
             <div className="flex gap-3">
-              <button onClick={() => setShowInviteModal(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200">閉じる</button>
-              <button onClick={handleCopyCode} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl flex justify-center items-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-500/30">
-                <LuCopy /> コピー
-              </button>
+              <button onClick={() => setShowInviteModal(false)} className="flex-1 py-3 bg-gray-100 rounded-xl font-bold hover:bg-gray-200 transition">閉じる</button>
+              <button onClick={handleCopyCode} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition">コピー</button>
             </div>
           </div>
         </div>
       )}
 
       {showNameModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl">
-            <h3 className="text-xl font-black mb-2">表示名の変更</h3>
-            <p className="text-sm text-gray-500 mb-6">このプロジェクト内でのみ使われる名前です</p>
-            <input 
-              type="text" 
-              placeholder="新しい表示名" 
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-blue-500 outline-none mb-6"
-              autoFocus
-            />
+            <h3 className="text-xl font-black mb-4">表示名の変更</h3>
+            <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full border rounded-xl px-4 py-3 mb-6 focus:ring-2 focus:ring-blue-500 outline-none font-bold" />
             <div className="flex gap-3">
-              <button onClick={() => setShowNameModal(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200">キャンセル</button>
-              <button onClick={handleChangeName} disabled={!newName.trim()} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:bg-gray-300 transition shadow-lg shadow-blue-500/30">
-                変更する
-              </button>
+              <button onClick={() => setShowNameModal(false)} className="flex-1 py-3 bg-gray-100 rounded-xl font-bold hover:bg-gray-200 transition">キャンセル</button>
+              <button onClick={handleChangeName} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition">変更</button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 };
