@@ -3,8 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Chat } from './Chat';
 import { 
   LuX, LuMessageSquare, LuUsers, LuUserPlus, LuPenLine, LuLogOut, LuCopy, LuChevronRight, 
-  LuPlus, LuFolderOpen, LuFile, LuCircleCheck, LuArrowDownUp, LuArrowDown, LuArrowUp, LuTrash2,
-  LuUserMinus, LuTrophy
+  LuPlus, LuFolderOpen, LuCircleCheck, LuArrowDownUp, LuArrowDown, LuArrowUp, LuTrash2,
+  LuUserMinus, LuTrophy, LuLeaf // ✨ LuLeaf（葉っぱアイコン）を追加！
 } from "react-icons/lu";
 import { Header } from './Header';
 
@@ -44,6 +44,46 @@ interface Task {
 type SortKey = 'created_at' | 'deadline' | 'priority' | 'progress' | 'name';
 type SortOrder = 'asc' | 'desc';
 
+// ✨ 提案2：進捗度に応じた「色の成長」テーマを生成する関数
+const getProgressTheme = (progress: number) => {
+  if (progress === 100) return {
+    barBg: 'bg-gradient-to-r from-emerald-400 to-cyan-400 shadow-[0_0_12px_rgba(52,211,153,0.6)]',
+    lineBg: 'bg-emerald-400', // 枝の色
+    text: 'text-emerald-600',
+    border: 'border-emerald-300',
+    cardBg: 'bg-emerald-50/30',
+    hoverBg: 'hover:bg-emerald-50',
+    iconText: 'text-emerald-500'
+  };
+  if (progress >= 70) return {
+    barBg: 'bg-green-500',
+    lineBg: 'bg-green-400',
+    text: 'text-green-700',
+    border: 'border-green-300',
+    cardBg: 'bg-green-50/20',
+    hoverBg: 'hover:bg-green-50',
+    iconText: 'text-green-500'
+  };
+  if (progress >= 30) return {
+    barBg: 'bg-lime-400',
+    lineBg: 'bg-lime-400',
+    text: 'text-lime-700',
+    border: 'border-lime-300',
+    cardBg: 'bg-lime-50/20',
+    hoverBg: 'hover:bg-lime-50',
+    iconText: 'text-lime-500'
+  };
+  return { // 0-29% (土や種のイメージ)
+    barBg: 'bg-amber-600',
+    lineBg: 'bg-amber-300',
+    text: 'text-amber-800',
+    border: 'border-amber-200',
+    cardBg: 'bg-amber-50/10',
+    hoverBg: 'hover:bg-amber-50',
+    iconText: 'text-amber-600'
+  };
+};
+
 export const ProjectMain: React.FC = () => {
   const { id: communityId } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -75,31 +115,6 @@ export const ProjectMain: React.FC = () => {
   const [showOnlyMyTasks, setShowOnlyMyTasks] = useState(false);
   const [hideCompleted, setHideCompleted] = useState(false);
 
-  // ✨ メイン画面用：進捗率に基づいてステータスを自動更新する関数
-  const syncTaskStatusIfNeeded = useCallback(async (task: Task) => {
-    let autoStatus = '進行中';
-    if (task.progress === 0) autoStatus = '未着手';
-    else if (task.progress === 100) autoStatus = '完了';
-
-    if (task.status !== autoStatus) {
-      try {
-        const token = localStorage.getItem('access_token');
-        await fetch(`${API_BASE}/tasks/status`, {
-          method: 'PATCH',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}` 
-          },
-          body: JSON.stringify({ task_id: task.id, status: autoStatus })
-        });
-        // 画面上の表示を即座に更新するためにStateも更新
-        setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: autoStatus } : t));
-      } catch (e) {
-        console.error("ステータス自動同期エラー:", e);
-      }
-    }
-  }, []);
-
   const fetchMembers = useCallback(async (userIdToFind: string) => {
     if (!communityId) return;
     try {
@@ -128,16 +143,13 @@ export const ProjectMain: React.FC = () => {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
-        const data: Task[] = await res.json();
+        const data = await res.json();
         setTasks(data);
-        
-        // ✨ 全タスクに対して進捗とステータスの乖離をチェックして同期
-        data.forEach(task => syncTaskStatusIfNeeded(task));
       }
     } catch (e) {
       console.error("タスクの取得に失敗しました", e);
     }
-  }, [communityId, syncTaskStatusIfNeeded]);
+  }, [communityId]);
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -275,9 +287,8 @@ export const ProjectMain: React.FC = () => {
       });
 
       if (res.ok) {
-        const createdTask = await res.json();
         setNewTaskTitle('');
-        navigate(`/project/${communityId}/task/${createdTask.id}?edit=true`);
+        await fetchTasks(); 
       } else {
         const errorData = await res.json().catch(() => ({}));
         alert(`タスクの作成に失敗しました: ${errorData.detail || '不正なリクエスト'}`);
@@ -403,6 +414,9 @@ export const ProjectMain: React.FC = () => {
   const totalProjectProgress = parentTasks.length > 0 
     ? Math.round(parentTasks.reduce((acc, t) => acc + (t.progress || 0), 0) / parentTasks.length)
     : 0;
+  
+  // プロジェクト全体のテーマ色
+  const projectTheme = getProgressTheme(totalProjectProgress);
 
   return (
     <div className="relative flex flex-col h-screen bg-gray-50 text-gray-900 font-sans overflow-hidden">
@@ -412,11 +426,15 @@ export const ProjectMain: React.FC = () => {
         showBackButton={true}
         onBack={() => navigate('/select-project')}
         menuItems={[
-          { label: 'メンバー一覧', icon: <LuUsers />, onClick: () => { fetchMembers(currentUserId); setShowMemberModal(true); } },
+          { 
+            label: 'メンバー一覧', 
+            icon: <LuUsers />, 
+            onClick: () => { fetchMembers(currentUserId); setShowMemberModal(true); } 
+          },
           { label: '招待コードを表示', icon: <LuUserPlus />, onClick: () => setShowInviteModal(true) },
-          { label: '表示名変更', icon: <LuPenLine />, onClick: handleOpenNameModal },
-          { label: 'プロジェクトから退出', icon: <LuUserMinus />, isDanger: true, onClick: handleLeaveProject },
-          { label: 'プロジェクト削除', icon: <LuTrash2 />, isDanger: true, onClick: handleDeleteProject },
+          { label: 'このプロジェクトでの表示名変更', icon: <LuPenLine />, onClick: handleOpenNameModal },
+          { label: 'プロジェクトから退出する', icon: <LuUserMinus />, isDanger: true, onClick: handleLeaveProject },
+          { label: 'プロジェクトを削除する', icon: <LuTrash2 />, isDanger: true, onClick: handleDeleteProject },
           { label: 'ログアウト', icon: <LuLogOut />, isDanger: true, onClick: () => { localStorage.removeItem('access_token'); navigate('/login'); } }
         ]} 
       />
@@ -424,31 +442,34 @@ export const ProjectMain: React.FC = () => {
       <div className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto pb-32">
         <div className="max-w-4xl mx-auto space-y-8">
           
-          <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl border border-blue-50 flex flex-col sm:flex-row items-center justify-between gap-6">
+          {/* ✨ プロジェクト全体サマリー（色も連動） */}
+          <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl border border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="flex-1 w-full">
               <div className="flex items-center gap-2 mb-2">
                 <LuTrophy className="text-yellow-500 w-5 h-5" />
                 <span className="text-sm font-black text-gray-400 uppercase tracking-[0.2em]">Project Overall</span>
               </div>
               <div className="flex items-end gap-3 mb-4">
-                <span className="text-5xl font-black text-blue-600 tracking-tighter">{totalProjectProgress}%</span>
+                <span className={`text-5xl font-black tracking-tighter transition-colors duration-1000 ${projectTheme.text}`}>
+                  {totalProjectProgress}%
+                </span>
                 <span className="text-sm font-bold text-gray-400 mb-2">完了</span>
               </div>
               <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden shadow-inner">
                 <div 
-                  className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-1000 ease-out" 
+                  className={`h-full transition-all duration-1000 ease-out ${projectTheme.barBg}`} 
                   style={{ width: `${totalProjectProgress}%` }}
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4 w-full sm:w-auto">
-                <div className="bg-blue-50 p-4 rounded-3xl text-center border border-blue-100">
-                    <p className="text-[10px] font-black text-blue-400 uppercase mb-1">Total Tasks</p>
-                    <p className="text-xl font-black text-blue-700">{parentTasks.length}</p>
+                <div className="bg-gray-50 p-4 rounded-3xl text-center border border-gray-200">
+                    <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Total Tasks</p>
+                    <p className="text-xl font-black text-gray-700">{parentTasks.length}</p>
                 </div>
-                <div className="bg-emerald-50 p-4 rounded-3xl text-center border border-emerald-100">
-                    <p className="text-[10px] font-black text-emerald-400 uppercase mb-1">Completed</p>
-                    <p className="text-xl font-black text-emerald-700">{parentTasks.filter(t => t.progress === 100).length}</p>
+                <div className="bg-gray-50 p-4 rounded-3xl text-center border border-gray-200">
+                    <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Completed</p>
+                    <p className="text-xl font-black text-gray-700">{parentTasks.filter(t => t.progress === 100).length}</p>
                 </div>
             </div>
           </div>
@@ -475,7 +496,9 @@ export const ProjectMain: React.FC = () => {
           </div>
 
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+            
             <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
+              
               <h2 className="text-xl font-black text-gray-800 flex items-center gap-3">
                 <span>タスク一覧</span>
                 <span className="text-sm font-bold text-gray-400 bg-gray-100 px-3 py-1 rounded-full whitespace-nowrap">
@@ -521,6 +544,7 @@ export const ProjectMain: React.FC = () => {
                   <button
                     onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
                     className="p-1.5 bg-white rounded-xl shadow-sm border border-gray-200 hover:bg-gray-50 text-gray-600 transition flex items-center justify-center w-8 h-8"
+                    title={sortOrder === 'asc' ? "昇順 (小さい順/古い順)" : "降順 (大きい順/新しい順)"}
                   >
                     {sortOrder === 'asc' ? <LuArrowUp className="w-4 h-4" /> : <LuArrowDown className="w-4 h-4" />}
                   </button>
@@ -530,24 +554,29 @@ export const ProjectMain: React.FC = () => {
 
             <div className="space-y-4">
               {sortedParentTasks.length === 0 ? (
-                <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-2xl">
-                  <p className="text-gray-400 font-bold">表示できるタスクがありません</p>
+                <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50/50">
+                  <LuLeaf className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 font-bold">まだこの大地には何もありません</p>
+                  <p className="text-sm text-gray-400 mt-1">最初のタスク（種）を植えて、樹を育てましょう！</p>
                 </div>
               ) : (
                 sortedParentTasks.map(parentTask => {
                   const childTasks = tasks.filter(t => t.parentId === parentTask.id || t.parent_task_id === parentTask.id);
                   const isCompleted = parentTask.progress === 100;
+                  const parentTheme = getProgressTheme(parentTask.progress); // ✨ 親タスクのテーマ色
                   
                   return (
-                    <div key={parentTask.id} className={`rounded-2xl border overflow-hidden transition-all ${isCompleted ? 'bg-emerald-50/30 border-emerald-200' : 'bg-gray-50 border-gray-200'}`}>
+                    <div key={parentTask.id} className={`rounded-3xl border overflow-hidden transition-all duration-500 shadow-sm ${parentTheme.cardBg} ${parentTheme.border}`}>
+                      
+                      {/* 親タスクのカード */}
                       <div 
                         onClick={() => navigate(`/project/${communityId}/task/${parentTask.id}`)}
-                        className={`p-4 bg-white cursor-pointer transition flex items-center gap-4 group ${isCompleted ? 'hover:bg-emerald-50' : 'hover:bg-blue-50'}`}
+                        className={`relative z-10 p-5 bg-white cursor-pointer transition flex items-center gap-4 group ${parentTheme.hoverBg}`}
                       >
-                        <LuFolderOpen className={`w-6 h-6 flex-shrink-0 ${isCompleted ? 'text-emerald-500' : 'text-blue-500'}`} />
+                        <LuFolderOpen className={`w-7 h-7 flex-shrink-0 transition-colors duration-500 ${parentTheme.iconText}`} />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <h3 className={`font-extrabold truncate text-lg transition-colors ${isCompleted ? 'text-emerald-800' : 'text-gray-800 group-hover:text-blue-700'}`}>
+                            <h3 className={`font-extrabold truncate text-lg transition-colors duration-500 ${isCompleted ? 'text-emerald-800' : 'text-gray-800 group-hover:text-blue-700'}`}>
                               {parentTask.title || parentTask.name}
                             </h3>
                             {isCompleted && (
@@ -557,59 +586,61 @@ export const ProjectMain: React.FC = () => {
                             )}
                           </div>
                           <div className="flex items-center gap-3 mt-2">
-                            <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md ${isCompleted ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
+                            <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md bg-gray-100 ${parentTheme.text}`}>
                               {parentTask.status}
                             </span>
-                            <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${isCompleted ? 'bg-emerald-100' : 'bg-gray-100'}`}>
-                              <div className={`h-full ${isCompleted ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${parentTask.progress}%` }} />
+                            <div className={`flex-1 h-2 rounded-full overflow-hidden bg-gray-100`}>
+                              <div className={`h-full transition-all duration-1000 ${parentTheme.barBg}`} style={{ width: `${parentTask.progress}%` }} />
                             </div>
-                            <span className={`text-xs font-black w-8 text-right ${isCompleted ? 'text-emerald-600' : 'text-blue-600'}`}>{parentTask.progress}%</span>
+                            <span className={`text-xs font-black w-8 text-right transition-colors duration-500 ${parentTheme.text}`}>{parentTask.progress}%</span>
                           </div>
                         </div>
                       </div>
 
+                      {/* ✨ 提案1：枝葉のUI */}
                       {childTasks.length > 0 && (
-                        <div className={`p-3 border-t space-y-2 pl-6 sm:pl-12 ${isCompleted ? 'bg-emerald-50/50 border-emerald-100' : 'bg-gray-50/50 border-gray-200'}`}>
-                          {childTasks.map(childTask => {
-                            const isMyChild = childTask.assignees?.some(a => a.id === currentUserId);
-                            const childCompleted = childTask.progress === 100;
+                        <div className="relative pt-3 pb-5 pr-5">
+                          {/* 樹の幹（縦線） */}
+                          <div className={`absolute left-[2.35rem] top-0 bottom-8 w-1 rounded-b-full transition-colors duration-500 ${parentTheme.lineBg}`}></div>
+                          
+                          <div className="space-y-3">
+                            {childTasks.map(childTask => {
+                              const isMyChild = childTask.assignees?.some(a => a.id === currentUserId);
+                              const childCompleted = childTask.progress === 100;
+                              const childTheme = getProgressTheme(childTask.progress); // ✨ 子タスクのテーマ色
 
-                            if (hideCompleted && childCompleted) return null;
-                            if (showOnlyMyTasks && !isMyChild) return null;
+                              if (hideCompleted && childCompleted) return null;
+                              if (showOnlyMyTasks && !isMyChild) return null;
 
-                            return (
-                              <div 
-                                key={childTask.id}
-                                onClick={() => navigate(`/project/${communityId}/task/${childTask.id}`)}
-                                className={`p-3 bg-white rounded-xl border cursor-pointer transition flex items-center gap-3 group ${
-                                  childCompleted ? 'border-emerald-200 hover:border-emerald-400' : 
-                                  (showOnlyMyTasks && isMyChild) ? 'border-blue-300 shadow-sm' : 'border-gray-200 hover:border-blue-300'
-                                }`}
-                              >
-                                {childCompleted ? (
-                                  <LuCircleCheck className="w-5 h-5 text-emerald-500 flex-shrink-0" />
-                                ) : (
-                                  <LuFile className="w-5 h-5 text-gray-400 flex-shrink-0 group-hover:text-blue-400" />
-                                )}
-                                <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                  <div className="flex items-center gap-2">
-                                    <h4 className={`font-bold text-sm truncate transition-colors ${
-                                      childCompleted ? 'text-emerald-700' : 'text-gray-700 group-hover:text-blue-600'
-                                    }`}>
-                                      {childTask.title || childTask.name}
-                                    </h4>
-                                    {childCompleted && <span className="text-[10px] font-black text-emerald-500 bg-emerald-50 px-1.5 rounded">DONE</span>}
-                                  </div>
-                                  <div className="flex items-center gap-2 w-full sm:w-1/3">
-                                    <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                      <div className={`h-full ${childCompleted ? 'bg-emerald-400' : 'bg-blue-400'}`} style={{ width: `${childTask.progress}%` }} />
+                              return (
+                                <div key={childTask.id} className="relative ml-[4rem] group/child">
+                                  {/* 樹の枝（横線） */}
+                                  <div className={`absolute -left-[1.65rem] top-1/2 w-[1.65rem] h-1 transition-colors duration-500 ${childTheme.lineBg}`}></div>
+                                  
+                                  <div 
+                                    onClick={() => navigate(`/project/${communityId}/task/${childTask.id}`)}
+                                    className={`relative p-4 bg-white rounded-2xl border transition-all duration-300 flex items-center gap-3 cursor-pointer hover:-translate-y-0.5 shadow-sm hover:shadow-md ${childTheme.border}`}
+                                  >
+                                    <LuLeaf className={`w-5 h-5 flex-shrink-0 transition-colors duration-500 ${childTheme.iconText}`} />
+                                    <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2">
+                                        <h4 className={`font-bold text-sm truncate transition-colors duration-500 ${childCompleted ? 'text-emerald-700' : 'text-gray-700 group-hover/child:text-blue-600'}`}>
+                                          {childTask.title || childTask.name}
+                                        </h4>
+                                        {childCompleted && <span className="text-[10px] font-black text-emerald-500 bg-emerald-50 px-1.5 rounded">DONE</span>}
+                                      </div>
+                                      <div className="flex items-center gap-3 w-full sm:w-1/3">
+                                        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                          <div className={`h-full transition-all duration-1000 ${childTheme.barBg}`} style={{ width: `${childTask.progress}%` }} />
+                                        </div>
+                                        <span className={`text-[10px] font-black w-6 text-right transition-colors duration-500 ${childTheme.text}`}>{childTask.progress}%</span>
+                                      </div>
                                     </div>
-                                    <span className={`text-[10px] font-black w-6 text-right ${childCompleted ? 'text-emerald-500' : 'text-gray-500'}`}>{childTask.progress}%</span>
                                   </div>
                                 </div>
-                              </div>
-                            );
-                          })}
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -622,7 +653,8 @@ export const ProjectMain: React.FC = () => {
       </div>
       
       <div className={`fixed z-40 transition-all duration-300 transform ${
-        'inset-0 w-full h-full rounded-none origin-bottom sm:inset-auto sm:bottom-28 sm:right-6 sm:w-[400px] sm:h-[600px] sm:rounded-2xl sm:shadow-2xl sm:border sm:border-gray-300 sm:origin-bottom-right '
+        'inset-0 w-full h-full rounded-none origin-bottom' +
+        ' sm:inset-auto sm:bottom-28 sm:right-6 sm:w-[400px] sm:h-[600px] sm:rounded-2xl sm:shadow-2xl sm:border sm:border-gray-300 sm:origin-bottom-right '
       } ${
         isChatOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95 pointer-events-none'
       }`}>
@@ -682,6 +714,7 @@ export const ProjectMain: React.FC = () => {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl text-center">
             <h3 className="text-xl font-black mb-2">招待コード</h3>
+            <p className="text-sm text-gray-500 mb-6">メンバーを招待するためのコードです</p>
             <div className="text-4xl font-black tracking-[0.2em] text-blue-600 bg-blue-50 py-4 rounded-2xl mb-6 border border-blue-100">
               {inviteCode}
             </div>
@@ -699,6 +732,7 @@ export const ProjectMain: React.FC = () => {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-black mb-2">表示名の変更</h3>
+            <p className="text-sm text-gray-500 mb-6">このプロジェクト内でのみ使われる名前です</p>
             <input 
               type="text" 
               placeholder="新しい表示名" 
@@ -709,7 +743,9 @@ export const ProjectMain: React.FC = () => {
             />
             <div className="flex gap-3">
               <button onClick={() => setShowNameModal(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200">キャンセル</button>
-              <button onClick={handleChangeName} disabled={!newName.trim()} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700">変更する</button>
+              <button onClick={handleChangeName} disabled={!newName.trim()} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:bg-gray-300 transition shadow-lg shadow-blue-500/30">
+                変更する
+              </button>
             </div>
           </div>
         </div>
