@@ -161,10 +161,10 @@ const SelectProject: React.FC = () => {
     navigate('/login');
   };
 
-  if (loading) return <div className="flex items-center justify-center h-screen bg-gray-50 text-blue-600 font-black animate-pulse">LOADING...</div>;
+  if (loading) return <div className="flex items-center justify-center h-screen bg-[#586d87]/30 text-[#586d87] font-black animate-pulse">LOADING...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans flex flex-col">
+    <div className="min-h-screen bg-[#586d87]/30 text-slate-900 font-sans flex flex-col">
       
       {/* 共通ヘッダー */}
       <Header 
@@ -194,8 +194,8 @@ const SelectProject: React.FC = () => {
 
         {/* 参加中のプロジェクト一覧 */}
         <section>
-          <h2 className="text-xl font-black text-gray-800 mb-6 flex items-center gap-2">
-            <LuFolderOpen className="text-blue-500" /> 参加中のプロジェクト
+          <h2 className="text-xl font-black text-[#000000] mb-6 flex items-center gap-2">
+            <LuFolderOpen className="text-[#000000]" /> 参加中のプロジェクト
           </h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -204,28 +204,28 @@ const SelectProject: React.FC = () => {
                 <div 
                   key={community.id} 
                   onClick={() => navigate(`/project/${community.id}`)}
-                  className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 hover:shadow-xl hover:-translate-y-1 hover:border-blue-200 transition-all cursor-pointer group flex flex-col"
+                  className="bg-white p-6 rounded-3xl shadow-sm border border-[#586d87]/60 hover:shadow-xl hover:-translate-y-1 hover:border-[#bfc6d5]/40 transition-all cursor-pointer group flex flex-col"
                 >
                   <div className="flex-1">
-                    <h3 className="text-xl font-extrabold text-gray-900 mb-2 group-hover:text-blue-600 transition-colors line-clamp-2">
+                    <h3 className="text-xl font-extrabold text-slate-900 mb-2 group-hover:text-[#586d87] transition-colors line-clamp-2">
                       {community.name}
                     </h3>
-                    <p className="text-sm font-bold text-gray-400 flex items-center gap-1">
+                    <p className="text-sm font-bold text-[#586d87]/70 flex items-center gap-1">
                       <LuUser className="w-4 h-4" /> メンバー: {community.member_count}人
                     </p>
                   </div>
                   <div className="mt-6 flex justify-end">
-                    <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                    <div className="w-10 h-10 rounded-full bg-[#586d87]/35 flex items-center justify-center text-[#586d87] group-hover:bg-[#bfc6d5] group-hover:text-white transition-colors">
                       <LuArrowRight className="w-5 h-5" />
                     </div>
                   </div>
                 </div>
               ))
             ) : (
-              <div className="col-span-full py-16 text-center border-2 border-dashed border-gray-200 rounded-3xl bg-gray-50/50">
-                <LuFolderOpen className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-                <p className="text-gray-500 font-bold">まだ参加しているプロジェクトはありません</p>
-                <p className="text-xs text-gray-400 mt-2">上のボタンからプロジェクトを作成するか、招待コードを入力して参加しましょう</p>
+              <div className="col-span-full py-16 text-center border-2 border-dashed border-[#586d87] rounded-3xl bg-[#586d87]/20">
+                <LuFolderOpen className="w-12 h-12 mx-auto text-[#586d87]/40 mb-4" />
+                <p className="text-[#586d87] font-bold">まだ参加しているプロジェクトはありません</p>
+                <p className="text-xs text-[#586d87]/70 mt-2">上のボタンからプロジェクトを作成するか、招待コードを入力して参加しましょう</p>
               </div>
             )}
           </div>
@@ -251,7 +251,7 @@ const SelectProject: React.FC = () => {
                   value={newProjectName}
                   onChange={e => setNewProjectName(e.target.value)}
                   placeholder="例：〇〇ハッカソン開発チーム"
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-[#bfc6d5] outline-none"
                   required
                 />
               </div>
@@ -261,7 +261,7 @@ const SelectProject: React.FC = () => {
                   type="text" 
                   value={createDisplayName}
                   onChange={e => setCreateDisplayName(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-[#bfc6d5] outline-none"
                   required
                 />
                 <p className="text-xs text-gray-400 mt-2 font-bold">※プロジェクトごとに異なる名前（ハンドルネーム等）を設定できます</p>
@@ -269,7 +269,7 @@ const SelectProject: React.FC = () => {
               <button 
                 type="submit" 
                 disabled={!newProjectName.trim() || !createDisplayName.trim() || isSubmitting}
-                className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:bg-gray-300 transition shadow-lg shadow-blue-500/30"
+                className="w-full py-4 bg-[#586d87] text-white font-bold rounded-xl hover:brightness-95 disabled:bg-gray-300 transition shadow-lg shadow-[#586d87]/30"
               >
                 {isSubmitting ? '作成中...' : 'プロジェクトを作成して入室'}
               </button>
@@ -296,7 +296,7 @@ const SelectProject: React.FC = () => {
                   value={inviteCode}
                   onChange={e => setInviteCode(e.target.value)}
                   placeholder="例：A1B2C3"
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 font-bold text-lg tracking-widest uppercase focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 font-bold text-lg tracking-widest uppercase focus:ring-2 focus:ring-[#bfc6d5] outline-none"
                   required
                 />
               </div>
@@ -306,7 +306,7 @@ const SelectProject: React.FC = () => {
                   type="text" 
                   value={joinDisplayName}
                   onChange={e => setJoinDisplayName(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-[#bfc6d5] outline-none"
                   required
                 />
                 <p className="text-xs text-gray-400 mt-2 font-bold">※プロジェクトごとに異なる名前（ハンドルネーム等）を設定できます</p>
@@ -314,7 +314,7 @@ const SelectProject: React.FC = () => {
               <button 
                 type="submit" 
                 disabled={!inviteCode.trim() || !joinDisplayName.trim() || isSubmitting}
-                className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:bg-gray-300 transition shadow-lg shadow-blue-500/30"
+                className="w-full py-4 bg-[#586d87] text-white font-bold rounded-xl hover:brightness-95 disabled:bg-gray-300 transition shadow-lg shadow-[#586d87]/30"
               >
                 {isSubmitting ? '参加中...' : 'プロジェクトに参加して入室'}
               </button>
