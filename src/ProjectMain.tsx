@@ -4,7 +4,7 @@ import { Chat } from './Chat';
 import { 
   LuX, LuMessageSquare, LuUsers, LuUserPlus, LuPenLine, LuLogOut, LuChevronRight, 
   LuPlus, LuFolderOpen, LuArrowDown, LuArrowUp,
-  LuTrophy, LuLeaf, LuCalendarDays ,LuInfo
+  LuTrophy, LuLeaf, LuCalendarDays, LuInfo 
 } from "react-icons/lu"; 
 import { Header } from './Header';
 import toast from 'react-hot-toast';
@@ -128,12 +128,30 @@ export const ProjectMain: React.FC = () => {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [isCreatingTask, setIsCreatingTask] = useState(false);
 
-  const [sortKey, setSortKey] = useState<SortKey>('created_at');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
-  const [showOnlyMyTasks, setShowOnlyMyTasks] = useState(false);
-  const [hideCompleted, setHideCompleted] = useState(false);
+  // ✨ localStorageから初期値を読み込む
+  const [sortKey, setSortKey] = useState<SortKey>(() => {
+    return (localStorage.getItem(`sortKey_${communityId}`) as SortKey) || 'created_at';
+  });
+  const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
+    return (localStorage.getItem(`sortOrder_${communityId}`) as SortOrder) || 'desc';
+  });
+  const [showOnlyMyTasks, setShowOnlyMyTasks] = useState<boolean>(() => {
+    return localStorage.getItem(`showOnlyMyTasks_${communityId}`) === 'true';
+  });
+  const [hideCompleted, setHideCompleted] = useState<boolean>(() => {
+    return localStorage.getItem(`hideCompleted_${communityId}`) === 'true';
+  });
 
-  // ✨ 再掲：親タスクの実質進捗を計算する共通関数
+  // ✨ 値が変わるたびにlocalStorageに保存する
+  useEffect(() => {
+    if (communityId) {
+      localStorage.setItem(`sortKey_${communityId}`, sortKey);
+      localStorage.setItem(`sortOrder_${communityId}`, sortOrder);
+      localStorage.setItem(`showOnlyMyTasks_${communityId}`, String(showOnlyMyTasks));
+      localStorage.setItem(`hideCompleted_${communityId}`, String(hideCompleted));
+    }
+  }, [sortKey, sortOrder, showOnlyMyTasks, hideCompleted, communityId]);
+
   const getTaskEffectiveProgress = (parentTask: Task, allTasks: Task[]) => {
     const children = allTasks.filter(t => t.parentId === parentTask.id || t.parent_task_id === parentTask.id);
     if (children.length > 0) {
@@ -286,7 +304,6 @@ export const ProjectMain: React.FC = () => {
     finally { setIsCreatingTask(false); }
   };
 
-  // ✨ useMemo を修正：計算関数を内側に含め依存関係警告を解消
   const sortedParentTasks = useMemo(() => {
     let parents = tasks.filter(t => !t.parentId && !t.parent_task_id);
     parents = parents.filter(task => {
@@ -310,8 +327,10 @@ export const ProjectMain: React.FC = () => {
           break;
         case 'name': valA = a.title || a.name || ''; valB = b.title || b.name || ''; break;
         case 'priority': {
-          const pMap: Record<string, number> = { '大': 3, '中': 2, '小': 1 };
-          valA = pMap[a.priority] || 0; valB = pMap[b.priority] || 0; break;
+          const pMap: Record<string, number> = { '高': 3, '中': 2, '低': 1 };
+          valA = pMap[a.priority] || 0;
+          valB = pMap[b.priority] || 0;
+          break;
         }
         case 'deadline':
           valA = a.deadline ? new Date(a.deadline).getTime() : (sortOrder === 'asc' ? Infinity : -Infinity);
@@ -438,13 +457,13 @@ export const ProjectMain: React.FC = () => {
                           </div>
                           <div className="flex flex-wrap items-center gap-2 mt-2">
                             <span className={`px-2 py-0.5 rounded-md text-[10px] font-black tracking-wider flex items-center gap-1 ${
-                             parentTask.priority === '高' ? 'bg-red-50 text-red-600 border border-red-100' :
-                             parentTask.priority === '中' ? 'bg-yellow-50 text-yellow-700 border border-yellow-100' :
-                             'bg-blue-50 text-blue-600 border border-blue-100'
-                           }`}>
-                             <LuInfo className="w-3 h-3" />
-                             優先度: {parentTask.priority}
-                           </span>
+                              parentTask.priority === '高' ? 'bg-red-50 text-red-600 border border-red-100' :
+                              parentTask.priority === '中' ? 'bg-yellow-50 text-yellow-700 border border-yellow-100' :
+                              'bg-blue-50 text-blue-600 border border-blue-100'
+                            }`}>
+                              <LuInfo className="w-3 h-3" />
+                              優先度: {parentTask.priority}
+                            </span>
                             {deadlineInfo && <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${deadlineInfo.className}`}><LuCalendarDays className="w-3 h-3" /> {deadlineInfo.text}</span>}
                             <div className="flex-1 h-2 rounded-full bg-gray-100 shadow-inner">
                               <div className={`h-full transition-all duration-1000 ${theme.barBg}`} style={{ width: `${actualProgress}%` }} />
@@ -459,22 +478,17 @@ export const ProjectMain: React.FC = () => {
                           <div className="space-y-3">
                             {children.map(child => (
                                 <div key={child.id} onClick={() => navigate(`/project/${communityId}/task/${child.id}`)} className="relative ml-[4rem] p-4 bg-white rounded-2xl border flex items-center gap-3 cursor-pointer hover:shadow-md transition">
-                                {/* ✨ レイアウト崩れ防止のため、アイコンに shrink-0 を追加 */}
-                                <LuLeaf className="w-4 h-4 text-emerald-500 shrink-0" />
-                                <span className="text-sm font-bold truncate flex-1">{child.title || child.name}</span>
-    
-                                {/* ✨ 子タスクにも優先度バッジを追加 */}
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-black tracking-wider border shrink-0 ${
-                                     child.priority === '高' ? 'bg-red-50 text-red-600 border-red-100' :
-                                     child.priority === '中' ? 'bg-yellow-50 text-yellow-700 border-yellow-100' :
-                                    'bg-blue-50 text-blue-600 border-blue-100'
-                                }`}>
-                                {child.priority}
-                                </span>
-
-                                {/* ✨ こちらも shrink-0 を追加 */}
-                                <span className="text-[10px] font-black shrink-0">{child.progress ?? 0}%</span>
-                            </div>
+                                    <LuLeaf className="w-4 h-4 text-emerald-500 shrink-0" />
+                                    <span className="text-sm font-bold truncate flex-1">{child.title || child.name}</span>
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-black tracking-wider border shrink-0 ${
+                                      child.priority === '高' ? 'bg-red-50 text-red-600 border-red-100' :
+                                      child.priority === '中' ? 'bg-yellow-50 text-yellow-700 border-yellow-100' :
+                                      'bg-blue-50 text-blue-600 border-blue-100'
+                                    }`}>
+                                      {child.priority}
+                                    </span>
+                                    <span className="text-[10px] font-black shrink-0">{child.progress ?? 0}%</span>
+                                </div>
                             ))}
                           </div>
                         </div>
