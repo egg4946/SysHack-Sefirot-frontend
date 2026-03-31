@@ -377,7 +377,7 @@ export const ProjectMain: React.FC = () => {
 
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
             <h2 className="text-xl font-black mb-4 text-gray-800">新しいタスク（種）を植える</h2>
-            <form onSubmit={handleCreateParentTask} className="flex gap-3">
+            <form onSubmit={handleCreateParentTask} className="flex flex-col sm:flex-row gap-3">
               <input
                 type="text"
                 placeholder="タスク名を入力..."
@@ -385,8 +385,13 @@ export const ProjectMain: React.FC = () => {
                 onChange={(e) => setNewTaskTitle(e.target.value)}
                 className="flex-1 bg-gray-50 border border-gray-200 rounded-2xl px-5 py-3 font-bold focus:ring-2 focus:ring-blue-500 outline-none"
               />
-              <button type="submit" disabled={!newTaskTitle.trim() || isCreatingTask} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-blue-700">
-                <LuPlus className="w-5 h-5" /> 追加
+              <button 
+                type="submit" 
+                disabled={!newTaskTitle.trim() || isCreatingTask} 
+                className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-blue-700 transition shrink-0"
+              >
+                <LuPlus className="w-5 h-5" /> 
+                <span className="sm:inline">追加</span> {/* テキストが長い場合は hidden sm:inline にしてもOK */}
               </button>
             </form>
           </div>
