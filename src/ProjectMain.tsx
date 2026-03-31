@@ -4,7 +4,7 @@ import { Chat } from './Chat';
 import { 
   LuX, LuMessageSquare, LuUsers, LuUserPlus, LuPenLine, LuLogOut, LuChevronRight, 
   LuPlus, LuFolderOpen, LuArrowDown, LuArrowUp,
-  LuTrophy, LuLeaf, LuCalendarDays 
+  LuTrophy, LuLeaf, LuCalendarDays ,LuInfo
 } from "react-icons/lu"; 
 import { Header } from './Header';
 import toast from 'react-hot-toast';
@@ -437,6 +437,14 @@ export const ProjectMain: React.FC = () => {
                             {isCompleted && <span className="text-[10px] font-black bg-emerald-500 text-white px-2 py-0.5 rounded">👑 COMPLETE!</span>}
                           </div>
                           <div className="flex flex-wrap items-center gap-2 mt-2">
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black tracking-wider flex items-center gap-1 ${
+                             parentTask.priority === '高' ? 'bg-red-50 text-red-600 border border-red-100' :
+                             parentTask.priority === '中' ? 'bg-yellow-50 text-yellow-700 border border-yellow-100' :
+                             'bg-blue-50 text-blue-600 border border-blue-100'
+                           }`}>
+                             <LuInfo className="w-3 h-3" />
+                             優先度: {parentTask.priority}
+                           </span>
                             {deadlineInfo && <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${deadlineInfo.className}`}><LuCalendarDays className="w-3 h-3" /> {deadlineInfo.text}</span>}
                             <div className="flex-1 h-2 rounded-full bg-gray-100 shadow-inner">
                               <div className={`h-full transition-all duration-1000 ${theme.barBg}`} style={{ width: `${actualProgress}%` }} />
@@ -451,10 +459,22 @@ export const ProjectMain: React.FC = () => {
                           <div className="space-y-3">
                             {children.map(child => (
                                 <div key={child.id} onClick={() => navigate(`/project/${communityId}/task/${child.id}`)} className="relative ml-[4rem] p-4 bg-white rounded-2xl border flex items-center gap-3 cursor-pointer hover:shadow-md transition">
-                                    <LuLeaf className="w-4 h-4 text-emerald-500" />
-                                    <span className="text-sm font-bold truncate flex-1">{child.title || child.name}</span>
-                                    <span className="text-[10px] font-black">{child.progress ?? 0}%</span>
-                                </div>
+                                {/* ✨ レイアウト崩れ防止のため、アイコンに shrink-0 を追加 */}
+                                <LuLeaf className="w-4 h-4 text-emerald-500 shrink-0" />
+                                <span className="text-sm font-bold truncate flex-1">{child.title || child.name}</span>
+    
+                                {/* ✨ 子タスクにも優先度バッジを追加 */}
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-black tracking-wider border shrink-0 ${
+                                     child.priority === '高' ? 'bg-red-50 text-red-600 border-red-100' :
+                                     child.priority === '中' ? 'bg-yellow-50 text-yellow-700 border-yellow-100' :
+                                    'bg-blue-50 text-blue-600 border-blue-100'
+                                }`}>
+                                {child.priority}
+                                </span>
+
+                                {/* ✨ こちらも shrink-0 を追加 */}
+                                <span className="text-[10px] font-black shrink-0">{child.progress ?? 0}%</span>
+                            </div>
                             ))}
                           </div>
                         </div>
