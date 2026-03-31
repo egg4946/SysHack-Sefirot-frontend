@@ -310,8 +310,10 @@ export const ProjectMain: React.FC = () => {
           break;
         case 'name': valA = a.title || a.name || ''; valB = b.title || b.name || ''; break;
         case 'priority': {
-          const pMap: Record<string, number> = { '大': 3, '中': 2, '小': 1 };
-          valA = pMap[a.priority] || 0; valB = pMap[b.priority] || 0; break;
+          const pMap: Record<string, number> = { '高': 3, '中': 2, '低': 1 };
+          valA = pMap[a.priority] || 0;
+          valB = pMap[b.priority] || 0;
+          break;
         }
         case 'deadline':
           valA = a.deadline ? new Date(a.deadline).getTime() : (sortOrder === 'asc' ? Infinity : -Infinity);

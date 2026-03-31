@@ -126,7 +126,7 @@ export const MemberDetail: React.FC = () => {
         });
         break;
       case 'priority_desc': {
-        const pWeight: Record<string, number> = { '大': 3, '中': 2, '小': 1 };
+        const pWeight: Record<string, number> = { '高': 3, '中': 2, '低': 1 };
         tasks.sort((a, b) => (pWeight[b.priority] || 0) - (pWeight[a.priority] || 0));
         break;
       }
@@ -292,7 +292,7 @@ export const MemberDetail: React.FC = () => {
                       <div className="flex flex-wrap items-center gap-2 mt-2">
                         {/* 優先度バッジ */}
                         <span className={`px-2 py-0.5 rounded-md text-[10px] font-black tracking-wider flex items-center gap-1 ${
-                          task.priority === '大' ? 'bg-red-50 text-red-600 border border-red-100' :
+                          task.priority === '高' ? 'bg-red-50 text-red-600 border border-red-100' :
                           task.priority === '中' ? 'bg-yellow-50 text-yellow-700 border border-yellow-100' :
                           'bg-blue-50 text-blue-600 border border-blue-100'
                         }`}>

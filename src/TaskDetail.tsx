@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   LuPlus, LuCircleCheck, LuCircle, LuTrash2, LuFilePlus, LuPenLine, LuInfo, LuCalendarDays, LuAlignLeft, LuUsers, LuUserMinus,
-  LuFolderOpen, LuUserPlus, LuX, LuChevronRight
+  LuFolderOpen, LuUserPlus, LuX, LuChevronRight, LuMessageSquare // ✨ LuMessageSquare を追加
 } from "react-icons/lu";
 import { Header } from './Header';
 import toast from 'react-hot-toast';
@@ -25,6 +25,7 @@ interface Assignee {
   id: string;
   display_name: string;
   progress: number;
+  comment?: string; // ✨ バックエンドに一言コメント用のフィールドを追加
 }
 
 interface ChecklistItem {
@@ -45,7 +46,7 @@ interface Task {
   name: string;
   description: string | null;
   progress: number;
-  priority: '大' | '中' | '小';
+  priority: '高' | '中' | '低';
   status: '未着手' | '進行中' | '完了';
   deadline: string | null;
   parent_task_id: string | null;
@@ -77,6 +78,7 @@ export const TaskDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   const [localProgress, setLocalProgress] = useState<number>(0);
+  const [localComment, setLocalComment] = useState<string>(''); // ✨ コメント用のState
   const [isDragging, setIsDragging] = useState(false);
 
   const [newChildTaskName, setNewChildTaskName] = useState('');
@@ -86,7 +88,7 @@ export const TaskDetail: React.FC = () => {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
-  const [editPriority, setEditPriority] = useState<'大' | '中' | '小'>('中');
+  const [editPriority, setEditPriority] = useState<'高' | '中' | '低'>('中');
   const [editDeadline, setEditDeadline] = useState('');
 
   // ✨ 親タスクと子タスクの判定ロジックを最適化
@@ -166,6 +168,7 @@ export const TaskDetail: React.FC = () => {
       const myData = task.assignees.find(a => a.id === currentUserId);
       if (myData) {
         setLocalProgress(myData.progress);
+        setLocalComment(myData.comment || ''); // ✨ APIから取得したコメントをセット
       }
     }
   }, [task, currentUserId, isDragging]);
@@ -228,25 +231,26 @@ export const TaskDetail: React.FC = () => {
     }
   };
 
-  const handleProgressChange = async (value: number) => {
+  // ✨ 進捗とコメントを同時に保存する関数に統合
+  const handleSaveStatus = async (newProgress: number, newComment: string) => {
     if (task) {
       const updatedAssignees = task.assignees.map(a => 
-        a.id === currentUserId ? { ...a, progress: value } : a
+        a.id === currentUserId ? { ...a, progress: newProgress, comment: newComment } : a
       );
       setTask({ ...task, assignees: updatedAssignees });
     }
     try {
-      await fetch(`${API_BASE}/tasks/progress`, {
+      await fetch(`${API_BASE}/tasks/progress`, { // バックエンドで comment も受け取れるようにする想定
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ task_id: taskId, progress: value })
+        body: JSON.stringify({ task_id: taskId, progress: newProgress, comment: newComment })
       });
       if (value > 0 && value < 100 && task?.status === '未着手') {
           await handleStatusChange('進行中');
       }
       fetchTaskDetail(); 
     } catch (e) {
-      console.error("進捗の保存に失敗しました", e);
+      console.error("状態の保存に失敗しました", e);
     }
   };
 
@@ -418,9 +422,11 @@ export const TaskDetail: React.FC = () => {
                 <option value="完了">完了</option>
               </select>
               <span className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${
-                task.priority === '大' ? 'bg-red-50 text-red-600' : task.priority === '中' ? 'bg-yellow-50 text-yellow-700' : 'bg-blue-50 text-blue-600'
-              }`}>
-                <LuInfo className="w-3.5 h-3.5" /> 優先度: {task.priority}
+                task.priority === '高' ? 'bg-red-50 text-red-600' : 
+                task.priority === '中' ? 'bg-yellow-50 text-yellow-700' : 
+                'bg-blue-50 text-blue-600'
+             }`}>
+               <LuInfo className="w-3.5 h-3.5" /> 優先度: {task.priority}
               </span>
               {task.deadline && (
                 <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-gray-100 text-gray-600 flex items-center gap-1">
@@ -441,41 +447,57 @@ export const TaskDetail: React.FC = () => {
           </div>
         </div>
 
-        {!isParentWithChildren && (
-          <section className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
-            <div className="flex items-center gap-2 mb-6 border-b pb-4">
-              <LuUsers className="w-6 h-6 text-blue-500" />
-              <h3 className="text-xl font-black text-gray-800 tracking-tight">担当メンバー</h3>
-            </div>
-            <div className="space-y-4">
-              {task.assignees.length > 0 ? (
-                task.assignees.map(assignee => (
-                  <div key={assignee.id} className="flex items-center gap-4 bg-gray-50/50 p-4 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-sm transition">
+        <section className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
+          <div className="flex items-center gap-2 mb-6 border-b pb-4">
+            <LuUsers className="w-6 h-6 text-blue-500" />
+            <h3 className="text-xl font-black text-gray-800 tracking-tight">担当メンバー</h3>
+          </div>
+          
+          <div className="space-y-4">
+            {task.assignees.length > 0 ? (
+              task.assignees.map(assignee => (
+                <div key={assignee.id} className="flex flex-col sm:flex-row sm:items-start gap-3 bg-gray-50/50 p-4 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-sm transition">
+                  <div className="flex items-center justify-between w-full sm:w-1/3 sm:mt-1">
                     <button
                       onClick={() => navigate(`/project/${communityId}/member/${assignee.id}`)}
-                      className="w-1/3 text-left font-extrabold text-sm sm:text-base text-gray-700 hover:text-blue-600 hover:underline truncate transition"
+                      className="text-left font-extrabold text-sm sm:text-base text-gray-700 hover:text-blue-600 hover:underline truncate transition"
                     >
                       {assignee.display_name}
                     </button>
-                    <div className="flex-1 flex items-center gap-3">
+                    {/* スマホ表示時の進捗テキスト */}
+                    <span className={`sm:hidden text-xs font-black w-8 text-right ${assignee.progress === 100 ? 'text-emerald-500' : 'text-blue-600'}`}>
+                      {assignee.progress}%
+                    </span>
+                  </div>
+
+                  <div className="flex-1 w-full flex flex-col gap-2">
+                    <div className="flex items-center gap-3">
                       <div className="flex-1 h-2.5 bg-gray-200 rounded-full overflow-hidden shadow-inner">
                         <div 
                           className={`h-full transition-all duration-1000 ${assignee.progress === 100 ? 'bg-emerald-400' : 'bg-blue-500'}`} 
                           style={{ width: `${assignee.progress}%` }} 
                         />
                       </div>
-                      <span className={`text-xs font-black w-8 text-right ${assignee.progress === 100 ? 'text-emerald-500' : 'text-blue-600'}`}>
+                      <span className={`hidden sm:block text-xs font-black w-8 text-right ${assignee.progress === 100 ? 'text-emerald-500' : 'text-blue-600'}`}>
                         {assignee.progress}%
                       </span>
                     </div>
+
+                    {/* ✨ メンバーの一言コメント表示 */}
+                    {assignee.comment && (
+                      <div className="flex items-start gap-1.5 text-xs text-gray-500 bg-white px-3 py-1.5 rounded-lg border border-gray-100 shadow-sm w-fit max-w-full">
+                        <LuMessageSquare className="w-3.5 h-3.5 mt-0.5 text-blue-400 shrink-0" />
+                        <span className="font-bold break-words line-clamp-2">{assignee.comment}</span>
+                      </div>
+                    )}
                   </div>
-                ))
-              ) : (
-                <p className="text-sm text-gray-400 font-bold text-center py-6">担当者はまだいません</p>
-              )}
-            </div>
-          </section>
-        )}
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-gray-400 font-bold text-center py-6">担当者はまだいません</p>
+            )}
+          </div>
+        </section>
 
         {task.parent_task_id === null && childTasks.length > 0 && (
           <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
@@ -549,25 +571,52 @@ export const TaskDetail: React.FC = () => {
                 <LuPlus size={24} />
               </button>
             </div>
-            <div className="space-y-4">
-              {task.checklists && task.checklists.length > 0 ? (
-                task.checklists.map(item => (
-                  <div 
-                    key={item.id} 
-                    className="flex items-center gap-4 p-5 bg-gray-50/50 border border-gray-100 rounded-2xl hover:bg-white hover:shadow-md transition cursor-pointer"
-                    onClick={() => handleToggleChecklist(item.id, item.is_completed)}
-                  >
-                    {item.is_completed ? <LuCircleCheck className="text-green-500 w-6 h-6" /> : <LuCircle className="text-gray-300 w-6 h-6" />}
-                    <span className={`flex-1 font-bold text-lg ${item.is_completed ? 'line-through text-gray-400' : 'text-gray-700'}`}>
-                      {item.content}
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <p className="text-center py-6 text-gray-400 font-bold italic">No items yet.</p>
-              )}
+            
+            {/* ✨ ひよこスライダー！ */}
+            <div className="py-4 relative z-10">
+              <input 
+                type="range" 
+                min="0" max="100" 
+                value={localProgress} 
+                onPointerDown={() => setIsDragging(true)}
+                onChange={(e) => setLocalProgress(parseInt(e.target.value))}
+                onPointerUp={(e) => {
+                  setIsDragging(false);
+                  handleSaveStatus(parseInt(e.currentTarget.value), localComment);
+                }}
+                className="w-full h-3 rounded-full appearance-none cursor-pointer hiyoko-slider" 
+                style={{
+                  '--thumb-img': `url(${getHiyokoImage(localProgress)})`,
+                  background: `linear-gradient(to right, ${localProgress === 100 ? '#34d399' : '#3b82f6'} ${localProgress}%, #f3f4f6 ${localProgress}%)`
+                } as React.CSSProperties}
+              />
             </div>
-          </section>
+
+            {/* ✨ 一言コメント入力欄 */}
+            <div className="mt-8 flex items-center gap-2 bg-blue-50/50 p-3 rounded-2xl border border-blue-100 transition focus-within:bg-white focus-within:border-blue-300 focus-within:shadow-md">
+              <LuMessageSquare className="w-5 h-5 text-blue-400 shrink-0" />
+              <input
+                type="text"
+                value={localComment}
+                onChange={(e) => setLocalComment(e.target.value)}
+                onBlur={() => {
+                  const data = task?.assignees.find(a => a.id === currentUserId);
+                  if (data && data.comment !== localComment) {
+                    handleSaveStatus(localProgress, localComment);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.currentTarget.blur();
+                  }
+                }}
+                placeholder="今の状況を共有...（例：〇〇で詰まってます / あとはテストだけ！）"
+                className="bg-transparent border-none outline-none text-sm font-bold text-gray-700 w-full placeholder:text-gray-400"
+              />
+            </div>
+            <p className="text-[10px] text-gray-400 text-right mt-1 font-bold pr-2">※ 入力欄から外れるかEnterで保存</p>
+          </div>
         )}
 
         {task.parent_task_id === null && (
@@ -655,23 +704,24 @@ export const TaskDetail: React.FC = () => {
               <div>
                 <label className="block text-sm font-bold text-gray-600 mb-2">優先度</label>
                 <div className="flex gap-4">
-                  {['大', '中', '小'].map(p => (
+                  {['高', '中', '低'].map(p => (
                     <label key={p} className="flex-1 cursor-pointer">
-                      <input 
-                        type="radio" 
-                        name="priority" 
-                        value={p}
-                        checked={editPriority === p}
-                        onChange={(e) => setEditPriority(e.target.value as '大' | '中' | '小')}
-                        className="peer sr-only"
-                      />
-                      <div className="text-center py-3 rounded-xl border-2 font-bold transition peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-checked:text-blue-700 bg-white text-gray-500 border-gray-200 hover:bg-gray-50">
-                        {p}
-                      </div>
-                    </label>
-                  ))}
+                     <input 
+                      type="radio" 
+                      name="priority" 
+                      value={p}
+                      checked={editPriority === p}
+                     onChange={(e) => setEditPriority(e.target.value as '高' | '中' | '低')}
+                     className="peer sr-only"
+                    />
+                <div className="text-center py-3 rounded-xl border-2 font-bold transition peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-checked:text-blue-700 bg-white text-gray-500 border-gray-200 hover:bg-gray-50">
+                  {p}
                 </div>
-              </div>
+               </label>
+                 ))}
+                </div>
+             </div>
+
               <div>
                 <label className="block text-sm font-bold text-gray-600 mb-2">期限 (しめきり)</label>
                 <input 
