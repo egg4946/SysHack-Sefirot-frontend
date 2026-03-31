@@ -422,7 +422,7 @@ export const ProjectMain: React.FC = () => {
           valB = b.title || b.name || '';
           break;
         case 'priority': {
-          const pMap: Record<string, number> = { '大': 3, '中': 2, '小': 1 };
+          const pMap: Record<string, number> = { '高': 3, '中': 2, '低': 1 };
           valA = pMap[a.priority] || 0;
           valB = pMap[b.priority] || 0;
           break;
