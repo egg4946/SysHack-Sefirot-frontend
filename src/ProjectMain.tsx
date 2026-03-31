@@ -387,8 +387,10 @@ export const ProjectMain: React.FC = () => {
               />
               <button 
                 type="submit" 
+                // 入力が空（または作成中）のときは無効化
                 disabled={!newTaskTitle.trim() || isCreatingTask} 
-                className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-blue-700 transition shrink-0"
+                // disabled:bg-gray-300 を追加して、無効時にグレーになるように設定
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 transition shrink-0"
               >
                 <LuPlus className="w-5 h-5" /> 
                 <span className="sm:inline">追加</span> {/* テキストが長い場合は hidden sm:inline にしてもOK */}
