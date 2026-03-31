@@ -403,7 +403,7 @@ export const ProjectMain: React.FC = () => {
                   <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} className="bg-transparent text-sm font-bold outline-none">
                     <option value="created_at">追加日</option>
                     <option value="deadline">期限日</option>
-                    <option value="priority">重要度</option>
+                    <option value="priority">優先度</option>
                     <option value="progress">進捗度</option>
                   </select>
                   <button onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')} className="p-1.5 bg-white rounded-xl shadow-sm border border-gray-200">
