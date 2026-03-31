@@ -598,7 +598,7 @@ const handleProgressChange = async (value: number) => {
                 <LuFilePlus className="text-blue-500 w-6 h-6" /> 子タスクを追加
               </h3>
             </div>
-            <form onSubmit={handleCreateChildTask} className="flex gap-3">
+            <form onSubmit={handleCreateChildTask} className="flex flex-col sm:flex-row gap-3">
               <input
                 type="text"
                 placeholder="子タスク名を入力..."
@@ -609,10 +609,10 @@ const handleProgressChange = async (value: number) => {
               <button 
                 type="submit" 
                 disabled={!newChildTaskName.trim() || isCreatingChild}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition shadow-md"
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 transition shadow-md shrink-0"
               >
                 <LuPlus className="w-5 h-5" />
-                <span className="hidden sm:inline">追加</span>
+                <span>追加</span> {/* 画面幅が非常に狭い場合はここを <span className="hidden xs:inline">追加</span> 等に調整してください */}
               </button>
             </form>
           </section>
