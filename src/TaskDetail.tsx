@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   LuPlus, LuCircleCheck, LuCircle, LuTrash2, LuFilePlus, LuPenLine, LuInfo, LuCalendarDays, LuAlignLeft, LuUsers, LuUserMinus,
   LuFolderOpen, LuUserPlus, LuX, LuChevronRight, LuMessageSquare // ✨ LuMessageSquare を追加
@@ -7,7 +7,7 @@ import {
 import { Header } from './Header';
 import toast from 'react-hot-toast';
 
-// ✨ ひよこ画像のインポート（assetsフォルダに入っている前提です）
+// アセットのインポート
 import img1 from './assets/1.png';
 import img2 from './assets/2.png';
 import img3 from './assets/3.png';
@@ -16,7 +16,6 @@ import img5 from './assets/5.png';
 import img6 from './assets/6.png';
 
 interface UserCommunity { id: string; name: string; }
-
 interface UserData {
   user_data: { id: string; };
   user_communities: UserCommunity[];
@@ -55,19 +54,19 @@ interface Task {
   checklists: ChecklistItem[];
 }
 
-// ✨ 進捗度に応じてひよこ画像を返す関数
 const getHiyokoImage = (progress: number) => {
   if (progress <= 19) return img1;
   if (progress <= 39) return img2;
   if (progress <= 59) return img3;
   if (progress <= 79) return img4;
   if (progress <= 99) return img5;
-  return img6; // 100%
+  return img6;
 };
 
 export const TaskDetail: React.FC = () => {
   const { communityId, taskId } = useParams<{ communityId: string; taskId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   
   const API_BASE = import.meta.env.VITE_API_BASE_URL;
   const token = localStorage.getItem('access_token');
@@ -92,6 +91,31 @@ export const TaskDetail: React.FC = () => {
   const [editPriority, setEditPriority] = useState<'高' | '中' | '低'>('中');
   const [editDeadline, setEditDeadline] = useState('');
 
+  // ✨ 親タスクと子タスクの判定ロジックを最適化
+  const childTasks = useMemo(() => allTasks.filter(t => t.parent_task_id === taskId), [allTasks, taskId]);
+  const isParentWithChildren = useMemo(() => task?.parent_task_id === null && childTasks.length > 0, [task, childTasks]);
+
+  // ✨ 親タスクの場合の「本当の進捗率」を算出（作りたての0%も確実に含める）
+  const displayProgress = useMemo(() => {
+    if (!task) return 0;
+    if (isParentWithChildren) {
+      const sum = childTasks.reduce((acc, c) => acc + (c.progress || 0), 0);
+      return Math.round(sum / childTasks.length);
+    }
+    return task.progress || 0;
+  }, [task, childTasks, isParentWithChildren]);
+
+  const openEditModal = useCallback((currentTask?: Task) => {
+    const t = currentTask || task;
+    if (t) {
+      setEditName(t.name);
+      setEditDesc(t.description || '');
+      setEditPriority(t.priority);
+      setEditDeadline(t.deadline ? new Date(t.deadline).toISOString().slice(0, 16) : '');
+      setShowEditModal(true);
+    }
+  }, [task]);
+
   const fetchTaskDetail = useCallback(async () => {
     if (!communityId || !taskId) return;
     try {
@@ -106,23 +130,34 @@ export const TaskDetail: React.FC = () => {
         setCurrentUserId(meData.user_data.id);
       }
 
+      let fetchedTask: Task | undefined;
       if (tasksRes.ok) {
         const data = (await tasksRes.json()) as Task[];
         setAllTasks(data);
-        const currentTask = data.find((t: Task) => t.id === taskId);
-        if (currentTask) setTask(currentTask);
+        fetchedTask = data.find((t: Task) => t.id === taskId);
+        if (fetchedTask) setTask(fetchedTask);
       }
 
       if (membersRes.ok) {
         const membersData = await membersRes.json();
         setMembers(membersData);
       }
-    } catch (e) {
-      console.error("データの取得に失敗しました", e);
+
+      if (fetchedTask && location.state?.autoEdit) {
+        setEditName(fetchedTask.name);
+        setEditDesc(fetchedTask.description || '');
+        setEditPriority(fetchedTask.priority);
+        setEditDeadline(fetchedTask.deadline ? new Date(fetchedTask.deadline).toISOString().slice(0, 16) : '');
+        setShowEditModal(true);
+        navigate(location.pathname, { replace: true, state: {} });
+      }
+
+    } catch (_e) {
+      console.error("データの取得に失敗しました", _e);
     } finally {
       setLoading(false);
     }
-  }, [taskId, communityId, API_BASE, token]);
+  }, [taskId, communityId, API_BASE, token, location.state, location.pathname, navigate]);
 
   useEffect(() => {
     fetchTaskDetail();
@@ -184,24 +219,15 @@ export const TaskDetail: React.FC = () => {
   };
 
   const handleLeaveTask = async () => {
-    if (!window.confirm("このタスクの担当から外れますか？\n（あなたが入力した進捗データなどはリセットされます）")) return;
-
     try {
       const res = await fetch(`${API_BASE}/tasks/leave`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ task_id: taskId })
       });
-      
-      if (res.ok) {
-        toast.success("タスクから退出しました。");
-        fetchTaskDetail();
-      } else {
-        toast.error("退出に失敗しました");
-      }
+      if (res.ok) fetchTaskDetail();
     } catch (e) {
       console.error(e);
-      toast.error("通信エラーが発生しました");
     }
   };
 
@@ -213,13 +239,15 @@ export const TaskDetail: React.FC = () => {
       );
       setTask({ ...task, assignees: updatedAssignees });
     }
-
     try {
       await fetch(`${API_BASE}/tasks/progress`, { // バックエンドで comment も受け取れるようにする想定
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ task_id: taskId, progress: newProgress, comment: newComment })
       });
+      if (value > 0 && value < 100 && task?.status === '未着手') {
+          await handleStatusChange('進行中');
+      }
       fetchTaskDetail(); 
     } catch (e) {
       console.error("状態の保存に失敗しました", e);
@@ -229,26 +257,43 @@ export const TaskDetail: React.FC = () => {
   const handleAddChecklist = async () => {
     const content = window.prompt("チェックリストの内容を入力してください");
     if (!content) return;
-    await fetch(`${API_BASE}/checklists/create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ task_id: taskId, content })
-    });
-    fetchTaskDetail();
+    try {
+        await fetch(`${API_BASE}/checklists/create`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ task_id: taskId, content })
+        });
+        fetchTaskDetail();
+    } catch {
+        toast.error("追加に失敗しました");
+    }
   };
 
   const handleToggleChecklist = async (itemId: string, currentStatus: boolean) => {
-    await fetch(`${API_BASE}/checklists/update`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ checklist_id: itemId, is_completed: !currentStatus })
-    });
-    fetchTaskDetail();
+    try {
+        await fetch(`${API_BASE}/checklists/update`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ checklist_id: itemId, is_completed: !currentStatus })
+        });
+        fetchTaskDetail();
+    } catch {
+        toast.error("更新に失敗しました");
+    }
   };
 
   const handleCreateChildTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newChildTaskName.trim() || isCreatingChild) return;
+
+    const isFirstChild = childTasks.length === 0;
+
+    if (isFirstChild) {
+      if (!window.confirm("子タスクを追加すると、この親タスクの現在の進捗や直接の担当者はリセットされます。よろしいですか？")) {
+        return;
+      }
+    }
+
     setIsCreatingChild(true);
     try {
       const res = await fetch(`${API_BASE}/tasks/create`, {
@@ -261,10 +306,27 @@ export const TaskDetail: React.FC = () => {
           parent_task_id: taskId
         })
       });
+
       if (res.ok) {
+        const data = await res.json();
         toast.success('子タスクを追加しました！');
-        fetchTaskDetail();
-        setNewChildTaskName('');
+
+        if (isFirstChild) {
+          await fetch(`${API_BASE}/tasks/progress`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ task_id: taskId, progress: 0 })
+          });
+          await handleStatusChange('進行中');
+          if (task?.assignees.some(a => a.id === currentUserId)) {
+            await fetch(`${API_BASE}/tasks/leave`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ task_id: taskId })
+            });
+          }
+        }
+        navigate(`/project/${communityId}/task/${data.id}`, { state: { autoEdit: true } });
       } else toast.error(`作成に失敗しました`);
     } catch (error) {
       console.error(error);
@@ -316,59 +378,49 @@ export const TaskDetail: React.FC = () => {
     }
   };
 
-  const openEditModal = () => {
-    if (task) {
-      setEditName(task.name);
-      setEditDesc(task.description || '');
-      setEditPriority(task.priority);
-      setEditDeadline(task.deadline ? new Date(task.deadline).toISOString().slice(0, 16) : '');
-      setShowEditModal(true);
-    }
-  };
-
   if (loading || !task) return <div className="flex items-center justify-center h-screen bg-gray-50 text-blue-600 font-black animate-pulse">LOADING...</div>;
 
   const isAssigned = task.assignees.some(a => a.id === currentUserId);
   const myData = task.assignees.find(a => a.id === currentUserId);
-
-  const childTasks = allTasks.filter(t => t.parent_task_id === taskId);
   const unassignedMembers = members.filter(m => !task.assignees.some(a => a.id === m.id));
+
+  // ✨ 進捗状況に応じたステータス表示（親タスク用）
+  const derivedStatus = isParentWithChildren 
+    ? (displayProgress === 100 ? '完了' : displayProgress > 0 ? '進行中' : '未着手')
+    : task.status;
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
-      
       <Header 
         title={task.name}
         showBackButton={true}
-        onBack={() => navigate(-1)}
+        onBack={() => navigate(`/project/${communityId}`)}
         menuItems={[
-          { label: 'タスクを編集する', icon: <LuPenLine />, onClick: openEditModal },
-          { label: 'メンバーを割り振る', icon: <LuUserPlus />, onClick: () => setShowAssignModal(true) },
-          ...(isAssigned ? [{ label: 'このタスクから退出する', icon: <LuUserMinus />, isDanger: true, onClick: handleLeaveTask }] : []),
+          { label: 'タスクを編集する', icon: <LuPenLine />, onClick: () => openEditModal() },
+          ...(!isParentWithChildren ? [{ label: 'メンバーを割り振る', icon: <LuUserPlus />, onClick: () => setShowAssignModal(true) }] : []),
+          ...(isAssigned && !isParentWithChildren ? [{ label: 'このタスクから退出する', icon: <LuUserMinus />, isDanger: true, onClick: handleLeaveTask }] : []),
           { label: 'タスクを削除する', icon: <LuTrash2 />, isDanger: true, onClick: handleDeleteTask }
         ]} 
       />
 
       <main className="p-4 sm:p-6 max-w-3xl mx-auto space-y-6 sm:space-y-8 pb-24">
-        
         <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-xl border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
           <div className="flex-1">
             <h2 className="text-2xl font-black text-gray-900 mb-2">{task.name}</h2>
             <div className="flex flex-wrap items-center gap-3 mt-3">
               <select 
-                value={task.status}
-                onChange={(e) => handleStatusChange(e.target.value)}
-                className={`px-3 py-1.5 rounded-xl text-sm font-black tracking-widest outline-none cursor-pointer border-2 transition ${
-                  task.status === '完了' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 focus:border-emerald-500' :
-                  task.status === '進行中' ? 'bg-orange-50 text-orange-700 border-orange-200 focus:border-orange-500' :
-                  'bg-gray-50 text-gray-600 border-gray-200 focus:border-gray-500'
+                value={derivedStatus}
+                disabled
+                className={`px-3 py-1.5 rounded-xl text-sm font-black tracking-widest outline-none border-2 transition appearance-none cursor-default ${
+                  derivedStatus === '完了' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                  derivedStatus === '進行中' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                  'bg-gray-50 text-gray-600 border-gray-200'
                 }`}
               >
                 <option value="未着手">未着手</option>
                 <option value="進行中">進行中</option>
                 <option value="完了">完了</option>
               </select>
-
               <span className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${
                 task.priority === '高' ? 'bg-red-50 text-red-600' : 
                 task.priority === '中' ? 'bg-yellow-50 text-yellow-700' : 
@@ -391,7 +443,7 @@ export const TaskDetail: React.FC = () => {
           </div>
           <div className="w-full sm:w-32 flex flex-col items-center justify-center p-4 bg-blue-50/50 rounded-3xl border border-blue-100">
              <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Total Progress</span>
-             <span className="text-3xl font-black text-blue-600">{task.progress}%</span>
+             <span className="text-3xl font-black text-blue-600">{displayProgress}%</span>
           </div>
         </div>
 
@@ -473,20 +525,51 @@ export const TaskDetail: React.FC = () => {
           </section>
         )}
 
-        {!isAssigned ? (
-          <button onClick={handleJoinTask} className="w-full py-6 bg-gradient-to-r from-blue-600 to-green-400 text-white rounded-3xl font-black text-xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
-            <LuPlus className="w-6 h-6" /> このタスクに参加して進捗を入力
-          </button>
-        ) : (
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-blue-100 overflow-hidden relative">
-            <div className="flex justify-between items-center mb-10">
-              <button 
-                onClick={() => navigate(`/project/${communityId}/member/${currentUserId}`)}
-                className="font-black text-xs uppercase tracking-widest text-blue-500 hover:text-blue-700 hover:underline transition"
-              >
-                {myData?.display_name}'s Progress
+        {!isParentWithChildren && (
+          !isAssigned ? (
+            <button onClick={handleJoinTask} className="w-full py-6 bg-gradient-to-r from-blue-600 to-green-400 text-white rounded-3xl font-black text-xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
+              <LuPlus className="w-6 h-6" /> このタスクに参加して進捗を入力
+            </button>
+          ) : (
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-blue-100 overflow-hidden relative">
+              <div className="flex justify-between items-center mb-10">
+                <button 
+                  onClick={() => navigate(`/project/${communityId}/member/${currentUserId}`)}
+                  className="font-black text-xs uppercase tracking-widest text-blue-500 hover:text-blue-700 hover:underline transition"
+                >
+                  {myData?.display_name}'s Progress
+                </button>
+                <span className="text-4xl font-black text-blue-600">{localProgress}%</span>
+              </div>
+              <div className="py-4 relative z-10">
+                <input 
+                  type="range" 
+                  min="0" max="100" 
+                  value={localProgress} 
+                  onPointerDown={() => setIsDragging(true)}
+                  onChange={(e) => setLocalProgress(parseInt(e.target.value))}
+                  onPointerUp={(e) => {
+                    setIsDragging(false);
+                    handleProgressChange(parseInt(e.currentTarget.value));
+                  }}
+                  className="w-full h-3 rounded-full appearance-none cursor-pointer hiyoko-slider" 
+                  style={{
+                    '--thumb-img': `url(${getHiyokoImage(localProgress)})`,
+                    background: `linear-gradient(to right, ${localProgress === 100 ? '#34d399' : '#3b82f6'} ${localProgress}%, #f3f4f6 ${localProgress}%)`
+                  } as React.CSSProperties}
+                />
+              </div>
+            </div>
+          )
+        )}
+
+        {!isParentWithChildren && (
+          <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
+            <div className="flex justify-between items-center mb-6 border-b pb-4">
+              <h3 className="text-2xl font-black text-gray-800 tracking-tight">Checklist</h3>
+              <button onClick={handleAddChecklist} className="bg-blue-50 text-blue-600 p-2 rounded-xl hover:bg-blue-100 transition shadow-sm">
+                <LuPlus size={24} />
               </button>
-              <span className="text-4xl font-black text-blue-600">{localProgress}%</span>
             </div>
             
             {/* ✨ ひよこスライダー！ */}
@@ -536,33 +619,6 @@ export const TaskDetail: React.FC = () => {
           </div>
         )}
 
-        <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
-          <div className="flex justify-between items-center mb-6 border-b pb-4">
-            <h3 className="text-2xl font-black text-gray-800 tracking-tight">Checklist</h3>
-            <button onClick={handleAddChecklist} className="bg-blue-50 text-blue-600 p-2 rounded-xl hover:bg-blue-100 transition shadow-sm">
-              <LuPlus size={24} />
-            </button>
-          </div>
-          <div className="space-y-4">
-            {task.checklists && task.checklists.length > 0 ? (
-              task.checklists.map(item => (
-                <div 
-                  key={item.id} 
-                  className="flex items-center gap-4 p-5 bg-gray-50/50 border border-gray-100 rounded-2xl hover:bg-white hover:shadow-md transition cursor-pointer"
-                  onClick={() => handleToggleChecklist(item.id, item.is_completed)}
-                >
-                  {item.is_completed ? <LuCircleCheck className="text-green-500 w-6 h-6" /> : <LuCircle className="text-gray-300 w-6 h-6" />}
-                  <span className={`flex-1 font-bold text-lg ${item.is_completed ? 'line-through text-gray-400' : 'text-gray-700'}`}>
-                    {item.content}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <p className="text-center py-6 text-gray-400 font-bold italic">No items yet.</p>
-            )}
-          </div>
-        </section>
-
         {task.parent_task_id === null && (
           <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
@@ -589,10 +645,9 @@ export const TaskDetail: React.FC = () => {
             </form>
           </section>
         )}
-
       </main>
 
-      {/* ✨ メンバーアサイン用モーダル */}
+      {/* モーダル群 (変更なし) */}
       {showAssignModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
@@ -636,7 +691,6 @@ export const TaskDetail: React.FC = () => {
               <h3 className="text-2xl font-black text-gray-800">タスクを編集</h3>
             </div>
             <form onSubmit={handleUpdateTask} className="p-8 overflow-y-auto flex-1 space-y-6 text-left">
-              
               <div>
                 <label className="block text-sm font-bold text-gray-600 mb-2">タスク名 <span className="text-red-500">*</span></label>
                 <input 
@@ -647,7 +701,6 @@ export const TaskDetail: React.FC = () => {
                   required
                 />
               </div>
-
               <div>
                 <label className="block text-sm font-bold text-gray-600 mb-2">優先度</label>
                 <div className="flex gap-4">
@@ -678,7 +731,6 @@ export const TaskDetail: React.FC = () => {
                   className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
-
               <div>
                 <label className="block text-sm font-bold text-gray-600 mb-2">説明・メモ</label>
                 <textarea 
@@ -689,7 +741,6 @@ export const TaskDetail: React.FC = () => {
                   className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
                 />
               </div>
-
               <div className="flex gap-4 pt-4">
                 <button type="button" onClick={() => setShowEditModal(false)} className="flex-1 py-4 bg-gray-100 text-gray-600 font-bold rounded-2xl hover:bg-gray-200 transition">
                   キャンセル
@@ -702,7 +753,6 @@ export const TaskDetail: React.FC = () => {
           </div>
         </div>
       )}
-
     </div>
   );
 };
