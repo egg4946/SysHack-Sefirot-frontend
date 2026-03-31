@@ -228,25 +228,46 @@ export const TaskDetail: React.FC = () => {
     }
   };
 
-  const handleProgressChange = async (value: number) => {
+const handleProgressChange = async (value: number) => {
+    // 1. ローカルの状態を即時更新してUIのレスポンスを高める
     if (task) {
       const updatedAssignees = task.assignees.map(a => 
         a.id === currentUserId ? { ...a, progress: value } : a
       );
       setTask({ ...task, assignees: updatedAssignees });
     }
+
     try {
+      // 2. 進捗率をサーバーに保存
       await fetch(`${API_BASE}/tasks/progress`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ task_id: taskId, progress: value })
       });
-      if (value > 0 && value < 100 && task?.status === '未着手') {
-          await handleStatusChange('進行中');
+
+      // 3. ✨ 進捗数値に基づいて次のステータスを決定
+      let nextStatus: '未着手' | '進行中' | '完了' = '進行中';
+      if (value === 0) {
+        nextStatus = '未着手';
+      } else if (value === 100) {
+        nextStatus = '完了';
       }
+
+      // 4. ✨ 現在のステータスと異なる場合のみ、APIでステータスを更新
+      // これにより「進行中 ⇄ 完了」などの往復が可能になる
+      if (task && task.status !== nextStatus) {
+        await fetch(`${API_BASE}/tasks/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ task_id: taskId, status: nextStatus })
+        });
+      }
+      
+      // 5. 最新のデータを取得して表示を同期
       fetchTaskDetail(); 
     } catch (e) {
       console.error("進捗の保存に失敗しました", e);
+      toast.error("保存に失敗しました");
     }
   };
 
